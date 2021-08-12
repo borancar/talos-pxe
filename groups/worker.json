@@ -1,0 +1,7 @@
+{
+	"name": "worker",
+	"profile": "worker",
+	"selector": {
+		"type": "worker"
+	}
+}

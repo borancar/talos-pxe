@@ -1,0 +1,19 @@
+{
+  "id": "controlplane",
+  "name": "controlplane",
+  "boot": {
+    "kernel": "/assets/vmlinuz-amd64",
+    "initrd": ["/assets/initramfs-amd64.xz"],
+    "args": [
+      "initrd=initramfs.xz",
+      "init_on_alloc=1",
+      "slab_nomerge",
+      "pti=on",
+      "console=tty0",
+      "console=ttyS0",
+      "printk.devkmsg=on",
+      "talos.platform=metal",
+      "talos.config=http://${next-server}:8080/assets/init.yaml"
+    ]
+  }
+}

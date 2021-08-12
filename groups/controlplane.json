@@ -1,0 +1,7 @@
+{
+	"name": "controlplane",
+	"profile": "controlplane",
+	"selector": {
+		"type": "controlplane"
+	}
+}

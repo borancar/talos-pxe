@@ -1,0 +1,22 @@
+kernel:
+  image: linuxkit/kernel:5.10.47
+  cmdline: "console=ttyS0 console=tty0 console=ttyAMA0"
+init:
+  - linuxkit/init:78fb57c7da07c4e43c3a37b27755581da087a3b6
+  - linuxkit/runc:bf1e0c61fb4678d6428d0aabbd80db5ea24e4d4d
+  - linuxkit/containerd:cc02c2af9c928c2faeccbe4edc78bd297ad91866
+services:
+  - name: getty
+    image: linuxkit/getty:ed32c71531f5998aa510847bb07bd847492d4101
+    env:
+     - INSECURE=true
+  - name: network
+    image: talos-pxe:latest
+    command: ["/go/bin/talos-pxe"]
+    capabilities:
+      - CAP_NET_ADMIN
+      - CAP_NET_BIND_SERVICE
+      - CAP_NET_RAW
+trust:
+  org:
+    - linuxkit
