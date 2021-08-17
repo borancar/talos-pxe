@@ -2,7 +2,7 @@
 github.com/ajeddeloh/go-json
 # github.com/ajeddeloh/yaml v0.0.0-20170912190910-6b94386aeefd
 github.com/ajeddeloh/yaml
-# github.com/alecthomas/units v0.0.0-20150109002421-6b4e7dc5e314
+# github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf
 github.com/alecthomas/units
 # github.com/coreos/container-linux-config-transpiler v0.9.0
 github.com/coreos/container-linux-config-transpiler/config
@@ -16,7 +16,7 @@ github.com/coreos/container-linux-config-transpiler/internal/util
 github.com/coreos/coreos-cloudinit/config
 # github.com/coreos/go-semver v0.2.0
 github.com/coreos/go-semver/semver
-# github.com/coreos/go-systemd v0.0.0-20160826104600-43e4800a6165
+# github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
 github.com/coreos/go-systemd/unit
 # github.com/coreos/ignition v0.33.0
 github.com/coreos/ignition/config/shared/errors
@@ -49,9 +49,16 @@ github.com/golang/protobuf/proto
 ## explicit
 github.com/google/gopacket
 github.com/google/gopacket/layers
+# github.com/insomniacslk/dhcp v0.0.0-20210813103503-c143d771146e
+## explicit
+github.com/insomniacslk/dhcp/dhcpv4
+github.com/insomniacslk/dhcp/dhcpv4/server4
+github.com/insomniacslk/dhcp/iana
+github.com/insomniacslk/dhcp/interfaces
+github.com/insomniacslk/dhcp/rfc1035label
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
-# github.com/mdlayher/raw v0.0.0-20191004140158-e1402808046b
+# github.com/mdlayher/raw v0.0.0-20191009151244-50f2db8cc065
 github.com/mdlayher/raw
 # github.com/milosgajdos/tenus v0.0.3
 ## explicit
@@ -67,11 +74,19 @@ github.com/poseidon/matchbox/matchbox/storage/storagepb
 # github.com/sirupsen/logrus v1.4.2
 ## explicit
 github.com/sirupsen/logrus
+# github.com/u-root/uio v0.0.0-20210528114334-82958018845c
+github.com/u-root/uio/rand
+github.com/u-root/uio/ubinary
+github.com/u-root/uio/uio
 # github.com/vincent-petithory/dataurl v0.0.0-20160330182126-9a301d65acbb
 github.com/vincent-petithory/dataurl
+# go.universe.tf/netboot v0.0.0-20210617221821-fc2840fa7b05
+## explicit
+go.universe.tf/netboot/dhcp4
+go.universe.tf/netboot/tftp
 # go4.org v0.0.0-20160314031811-03efcb870d84
 go4.org/errorutil
-# golang.org/x/crypto v0.0.0-20191122220453-ac88ee75c92c
+# golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 golang.org/x/crypto/cast5
 golang.org/x/crypto/openpgp
 golang.org/x/crypto/openpgp/armor
@@ -79,7 +94,13 @@ golang.org/x/crypto/openpgp/elgamal
 golang.org/x/crypto/openpgp/errors
 golang.org/x/crypto/openpgp/packet
 golang.org/x/crypto/openpgp/s2k
-# golang.org/x/net v0.0.0-20191119073136-fc4aabc6c914
+# golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
+## explicit
 golang.org/x/net/bpf
-# golang.org/x/sys v0.0.0-20191120155948-bd437916bb0e
+golang.org/x/net/internal/iana
+golang.org/x/net/internal/socket
+golang.org/x/net/ipv4
+# golang.org/x/sys v0.0.0-20210525143221-35b2ab0089ea
+golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
+golang.org/x/sys/windows

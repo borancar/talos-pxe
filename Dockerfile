@@ -5,6 +5,11 @@ WORKDIR /go/src/github.com/borancar/talos-pxe
 COPY go.mod .
 COPY go.sum .
 COPY main.go .
+COPY dhcp.go .
+COPY tftp.go .
+COPY pxe.go .
+COPY tftp.go .
+COPY logging.go .
 COPY vendor vendor
 
 RUN go install
@@ -19,4 +24,5 @@ COPY assets /srv/assets
 COPY profiles /srv/profiles
 COPY groups /srv/groups
 
-ENTRYPOINT "/go/bin/talos-pxe"
+ENTRYPOINT ["/go/bin/talos-pxe"]
+CMD ["--root", "/srv"]

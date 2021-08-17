@@ -1,15 +1,17 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"context"
+	"flag"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
+	"path/filepath"
+	"sync"
+	"syscall"
 	"text/template"
 	"time"
 
@@ -24,38 +26,209 @@ import (
 
 var log = logrus.New()
 
-var dnsmasqConfTemplate = template.Must(template.New("dnsmasq config").Parse(`
-port=0
+const (
+	serverRoot = "."
+	portDHCP = 67
+	portTFTP = 69
+	portHTTP = 8080
+	portPXE  = 4011
+)
 
-log-dhcp
+// Architecture describes a kind of CPU architecture.
+type Architecture int
 
-enable-tftp
-tftp-root=/srv/tftp
+// Architecture types that Pixiecore knows how to boot.
+//
+// These architectures are self-reported by the booting machine. The
+// machine may support additional execution modes. For example, legacy
+// PC BIOS reports itself as an ArchIA32, but may also support ArchX64
+// execution.
+const (
+	// ArchIA32 is a 32-bit x86 machine. It _may_ also support X64
+	// execution, but Pixiecore has no way of knowing.
+	ArchIA32 Architecture = iota
+	// ArchX64 is a 64-bit x86 machine (aka amd64 aka X64).
+	ArchX64
+)
 
-# Legacy PXE
-dhcp-match=set:bios,option:client-arch,0
-dhcp-boot=tag:bios,undionly.kpxe,,{{ .Ip }}
+func (a Architecture) String() string {
+	switch a {
+	case ArchIA32:
+		return "IA32"
+	case ArchX64:
+		return "X64"
+	default:
+		return "Unknown architecture"
+	}
+}
 
-# UEFI
-dhcp-match=set:efi32,option:client-arch,6
-dhcp-boot=tag:efi32,ipxe.efi
-dhcp-match=set:efibc,option:client-arch,7
-dhcp-boot=tag:efibc,ipxe.efi
-dhcp-match=set:efi64,option:client-arch,9
-dhcp-boot=tag:efi64,ipxe.efi
+// A Machine describes a machine that is attempting to boot.
+type Machine struct {
+	MAC  net.HardwareAddr
+	Arch Architecture
+}
 
-# iPXE - chainload to matchbox ipxe boot script
-dhcp-userclass=set:ipxe,iPXE
-dhcp-boot=tag:ipxe,http://{{ .Ip }}:8080/boot.ipxe
+// Firmware describes a kind of firmware attempting to boot.
+//
+// This should only be used for selecting the right bootloader within
+// Pixiecore, kernel selection should key off the more generic
+// Architecture.
+type Firmware int
 
-pxe-prompt="Booting", 1
+// The bootloaders that Pixiecore knows how to handle.
+const (
+	FirmwareX86PC         Firmware = iota // "Classic" x86 BIOS with PXE/UNDI support
+	FirmwareEFI32                         // 32-bit x86 processor running EFI
+	FirmwareEFI64                         // 64-bit x86 processor running EFI
+	FirmwareEFIBC                         // 64-bit x86 processor running EFI
+	FirmwareX86Ipxe                       // "Classic" x86 BIOS running iPXE (no UNDI support)
+	FirmwarePixiecoreIpxe                 // Pixiecore's iPXE, which has replaced the underlying firmware
+)
 
-{{- if .ProxyServer }}
-dhcp-range={{ .Proxy.DhcpIp }},proxy,{{ .Proxy.Netmask }}
-{{- else }}
-dhcp-range={{ .Standalone.IpMin }},{{ .Standalone.IpMax }},12h
-{{- end }}
-`))
+type DHCPRecord struct {
+	IP net.IP
+	expires time.Time
+}
+
+// A Server boots machines using a Booter.
+type Server struct {
+	ServerRoot string
+
+	IP net.IP
+
+	Net *net.IPNet
+
+	Intf string
+
+	ProxyDHCP bool
+
+	// Log receives logs on Pixiecore's operation. If nil, logging
+	// is suppressed.
+	Log func(subsystem, msg string)
+	// Debug receives extensive logging on Pixiecore's internals. Very
+	// useful for debugging, but very verbose.
+	Debug func(subsystem, msg string)
+
+	DHCPLock sync.Mutex
+	DHCPRecords map[string]*DHCPRecord
+
+	IPLock sync.Mutex
+	IPRecords map[string]bool
+
+	// These ports can technically be set for testing, but the
+	// protocols burned in firmware on the client side hardcode these,
+	// so if you change them in production, nothing will work.
+	DHCPPort int
+	TFTPPort int
+	PXEPort  int
+	HTTPPort int
+
+	errs chan error
+
+	eventsMu sync.Mutex
+	events   map[string][]machineEvent
+}
+
+func (s *Server) Ipxe(classId, classInfo string) ([]byte, error) {
+	var resultBuffer bytes.Buffer
+
+	if classId == "PXEClient:Arch:00000:UNDI:002001" && classInfo == "[iPXE]" {
+		ipxeMenuTemplate.Execute(&resultBuffer, s)
+		return resultBuffer.Bytes(), nil
+	}
+
+	return nil, fmt.Errorf("Unknown class %s:%s", classId, classInfo)
+}
+
+// Serve listens for machines attempting to boot, and uses Booter to
+// help them.
+func (s *Server) Serve() error {
+	if s.DHCPPort == 0 {
+		s.DHCPPort = portDHCP
+	}
+	if s.TFTPPort == 0 {
+		s.TFTPPort = portTFTP
+	}
+	if s.PXEPort == 0 {
+		s.PXEPort = portPXE
+	}
+	if s.HTTPPort == 0 {
+		s.HTTPPort = portHTTP
+	}
+
+	if s.ServerRoot == "" {
+		s.ServerRoot = serverRoot
+	}
+
+	tftp, err := net.ListenPacket("udp", fmt.Sprintf("%s:%d", s.IP, s.TFTPPort))
+	if err != nil {
+		return err
+	}
+	pxe, err := net.ListenPacket("udp4", fmt.Sprintf("%s:%d", s.IP, s.PXEPort))
+	if err != nil {
+		tftp.Close()
+		return err
+	}
+	http, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.IP, s.HTTPPort))
+	if err != nil {
+		tftp.Close()
+		pxe.Close()
+		return err
+	}
+
+	s.events = make(map[string][]machineEvent)
+	// 5 buffer slots, one for each goroutine, plus one for
+	// Shutdown(). We only ever pull the first error out, but shutdown
+	// will likely generate some spurious errors from the other
+	// goroutines, and we want them to be able to dump them without
+	// blocking.
+	s.errs = make(chan error, 6)
+
+	s.debug("Init", "Starting servers")
+
+	go func() { s.errs <- s.servePXE(pxe) }()
+	go func() { s.errs <- s.serveTFTP(tftp) }()
+	go func() { s.errs <- s.startMatchbox(http) }()
+	go func() { s.errs <- s.startDhcp() }()
+
+	// Wait for either a fatal error, or Shutdown().
+	err = <-s.errs
+	http.Close()
+	tftp.Close()
+	pxe.Close()
+	return err
+}
+
+func (s *Server) startMatchbox(l net.Listener) error {
+	store := storage.NewFileStore(&storage.Config{
+		Root: s.ServerRoot,
+	})
+
+	server := server.NewServer(&server.Config{
+		Store: store,
+	})
+
+	config := &web.Config{
+		Core: server,
+		Logger: log,
+		AssetsPath: filepath.Join(s.ServerRoot, "assets"),
+	}
+
+	httpServer := web.NewServer(config)
+	if err := http.Serve(l, s.ipxeWrapperMenuHandler(httpServer.HTTPHandler())); err != nil {
+		return fmt.Errorf("Matchbox server shut down: %s", err)
+	}
+
+	return nil
+}
+
+// Shutdown causes Serve() to exit, cleaning up behind itself.
+func (s *Server) Shutdown() {
+	select {
+	case s.errs <- nil:
+	default:
+	}
+}
 
 var ipxeMenuTemplate = template.Must(template.New("iPXE Menu").Parse(`#!ipxe
 :start
@@ -73,13 +246,13 @@ set menu-timeout 0
 goto ${selected}
 
 :init
-chain http://{{ .Ip }}:8080/ipxe?uuid=${uuid}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=init
+chain http://{{ .IP }}:8080/ipxe?uuid=${uuid}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=init
 
 :controlplane
-chain http://{{ .Ip }}:8080/ipxe?uuid=${uuid}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=controlplane
+chain http://{{ .IP }}:8080/ipxe?uuid=${uuid}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=controlplane
 
 :worker
-chain http://{{ .Ip }}:8080/ipxe?uuid=${uuid}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=worker
+chain http://{{ .IP }}:8080/ipxe?uuid=${uuid}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=worker
 
 :reboot
 reboot
@@ -91,47 +264,6 @@ shell
 exit
 `))
 
-func logStream(name string, s io.ReadCloser, stream *os.File) error {
-	buf := make([]byte, 4096)
-
-	nb, err := s.Read(buf)
-	for nb != 0 {
-		stream.Write(buf)
-		nb, err = s.Read(buf)
-	}
-
-	if err != io.EOF {
-		return err
-	}
-
-	return nil
-}
-
-func followProcess(cmd *exec.Cmd) error {
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return err
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	//go logStream(cmd.Args[0], stdout, os.Stdout)
-	go io.Copy(os.Stdout, stdout)
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return err
-	}
-	//go logStream(cmd.Args[0], stderr, os.Stderr)
-	go io.Copy(os.Stderr, stderr)
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-	stdin.Close()
-
-	return nil
-}
-
 type ProxyServer struct {
 	DhcpIp string
 	Netmask string
@@ -139,34 +271,6 @@ type ProxyServer struct {
 
 type StandaloneServer struct {
 	IpMin, IpMax string
-}
-
-type PXEServer struct {
-	Ip string
-	ProxyServer bool
-	Proxy *ProxyServer
-	Standalone *StandaloneServer
-}
-
-func startDnsmasq(server PXEServer) error {
-	f, err := os.Create("/etc/dnsmasq.conf")
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	w := bufio.NewWriter(f)
-	if err := dnsmasqConfTemplate.Execute(w, server); err != nil {
-		return err
-	}
-	w.Flush()
-
-	cmd := exec.Command("/usr/sbin/dnsmasq", "-d")
-	if err := followProcess(cmd); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func getPrivateAddress() (net.IP, error) {
@@ -268,7 +372,7 @@ func runDhclient(ctx context.Context, iface *net.Interface) (*dhclient.Lease, er
 	}
 }
 
-func ipxeWrapperMenuHandler(primaryHandler http.Handler, pxeServer PXEServer) http.Handler {
+func (s *Server) ipxeWrapperMenuHandler(primaryHandler http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path != "ipxe" && req.URL.Path != "/ipxe" {
 			primaryHandler.ServeHTTP(w, req)
@@ -291,7 +395,7 @@ func ipxeWrapperMenuHandler(primaryHandler http.Handler, pxeServer PXEServer) ht
 		} else {
 			log.Info("Serving menu")
 
-			if err := ipxeMenuTemplate.Execute(w, pxeServer); err != nil {
+			if err := ipxeMenuTemplate.Execute(w, s); err != nil {
 				log.Error(err)
 				w.WriteHeader(http.StatusInternalServerError)
 			}
@@ -301,28 +405,10 @@ func ipxeWrapperMenuHandler(primaryHandler http.Handler, pxeServer PXEServer) ht
 	return http.HandlerFunc(fn)
 }
 
-func startMatchbox(pxeServer PXEServer) error {
-	store := storage.NewFileStore(&storage.Config{
-		Root: "/srv",
-	})
-
-	server := server.NewServer(&server.Config{
-		Store: store,
-	})
-
-	config := &web.Config{
-		Core: server,
-		Logger: log,
-		AssetsPath: "/srv/assets",
-	}
-
-	httpServer := web.NewServer(config)
-	go http.ListenAndServe("0.0.0.0:8080", ipxeWrapperMenuHandler(httpServer.HTTPHandler(), pxeServer))
-
-	return nil
-}
-
 func main() {
+	serverRootFlag := flag.String("root", "", "Server root, where to serve the files from")
+	flag.Parse()
+
 	eth0, err := tenus.NewLinkFrom("eth0")
 	if err != nil {
 		log.Panic(err)
@@ -344,9 +430,20 @@ func main() {
 		log.Infof(" - %s\n", iface.Name)
 	}
 
-	lease, err := runDhclient(context.Background(), &validInterfaces[0])
+	lease, err := runDhclient(context.Background(), eth0.NetInterface())
 
-	server := PXEServer{}
+	server := &Server{
+		ServerRoot: *serverRootFlag,
+		Intf: eth0.NetInterface().Name,
+		IPRecords: make(map[string]bool),
+		DHCPRecords: make(map[string]*DHCPRecord),
+		Log: func(subsystem, msg string) {
+			log.Infof("%s: %s", subsystem, msg)
+		},
+		Debug: func(subsystem, msg string) {
+			log.Infof("%s: %s", subsystem, msg)
+		},
+	}
 
 	if lease != nil {
 		log.Infof("Obtained address %s\n", lease.FixedAddress)
@@ -360,45 +457,27 @@ func main() {
 			log.Panic(err)
 		}
 
-		server.ProxyServer = true
-		server.Ip = lease.FixedAddress.String()
-		server.Proxy = &ProxyServer{
-			DhcpIp: lease.ServerID.String(),
-			Netmask: fmt.Sprintf("%d.%d.%d.%d", lease.Netmask[0], lease.Netmask[1], lease.Netmask[2], lease.Netmask[3]),
-		}
+		server.IP = lease.FixedAddress
+		server.ProxyDHCP = true
 	} else {
-		ip := "192.168.122.1"
-		ipMin := "192.168.122.2"
-		ipMax := "192.168.122.100"
+		netIp, netNet, err := net.ParseCIDR("192.168.123.1/24")
 
-		fmt.Printf("Setting manual address %s\n", ip)
+		server.IP = netIp
+		server.Net = netNet
+		server.ProxyDHCP = false
 
-		netIp, netNet, err := net.ParseCIDR(ip + "/24")
+		fmt.Printf("Setting manual address %s, leasing out subnet %s\n", netIp, netNet)
+
 		if err != nil {
 			log.Panic(err)
 		}
 
-		if err := eth0.SetLinkIp(netIp, netNet); err != nil {
+		if err := eth0.SetLinkIp(netIp, netNet); err != nil && err != syscall.EEXIST {
 			log.Panic(err)
 		}
-
-		server.ProxyServer = false;
-		server.Ip = ip
-		server.Standalone = &StandaloneServer {
-			IpMin: ipMin,
-			IpMax: ipMax,
-		}
 	}
 
-	log.Infof("Starting matchbox...\n")
-
-	if err := startMatchbox(server); err != nil {
-		log.Panic(err)
-	}
-
-	log.Infof("Starting dnsmasq...\n")
-
-	if err := startDnsmasq(server); err != nil {
+	if err := server.Serve(); err != nil {
 		log.Panic(err)
 	}
 }
