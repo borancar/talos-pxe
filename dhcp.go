@@ -292,6 +292,17 @@ func (s *Server) getNextFreeIPAddress() (net.IP, error) {
 	return nil, fmt.Errorf("No available IP addresses")
 }
 
+type OptionVendorIdentifierCode struct {
+}
+
+func (o OptionVendorIdentifierCode) Code() uint8 {
+	return 96
+}
+
+func (o OptionVendorIdentifierCode) String() string {
+	return "OptVendorIdentifier"
+}
+
 func (s *Server) handlerDHCP4() server4.Handler {
 	leaseTime := 5*time.Minute
 
@@ -303,44 +314,75 @@ func (s *Server) handlerDHCP4() server4.Handler {
 			return
 		}
 
-		s.DHCPLock.Lock()
-		defer s.DHCPLock.Unlock()
+		resp, err := dhcpv4.NewReplyFromRequest(m,
+			dhcpv4.WithOption(dhcpv4.OptServerIdentifier(s.IP)),
+		)
+		if err != nil {
+			log.Error(err)
+			return
+		}
 
-		record, ok := s.DHCPRecords[m.ClientHWAddr.String()]
-		if !ok {
-			newIp, err := s.getNextFreeIPAddress()
+		if !s.ProxyDHCP {
+			s.DHCPLock.Lock()
+			defer s.DHCPLock.Unlock()
+
+			record, ok := s.DHCPRecords[m.ClientHWAddr.String()]
+			if !ok {
+				newIp, err := s.getNextFreeIPAddress()
+				if err != nil {
+					log.Error(err)
+					return
+				}
+
+				record = &DHCPRecord{
+					IP: newIp,
+					expires: time.Now().Add(leaseTime),
+				}
+				s.DHCPRecords[m.ClientHWAddr.String()] = record
+
+			} else {
+				if record.expires.Before(time.Now().Add(leaseTime)) {
+					record.expires = time.Now().Add(leaseTime).Round(time.Second)
+				}
+			}
+
+			resp, err = dhcpv4.NewReplyFromRequest(m,
+				dhcpv4.WithNetmask(s.Net.Mask),
+				dhcpv4.WithYourIP(record.IP),
+				dhcpv4.WithGatewayIP(s.IP),
+				dhcpv4.WithOption(dhcpv4.OptRouter(s.IP)),
+				dhcpv4.WithOption(dhcpv4.OptIPAddressLeaseTime(leaseTime)),
+				dhcpv4.WithOption(dhcpv4.OptServerIdentifier(s.IP)),
+			)
 			if err != nil {
 				log.Error(err)
 				return
 			}
-
-			record = &DHCPRecord{
-				IP: newIp,
-				expires: time.Now().Add(leaseTime),
-			}
-			s.DHCPRecords[m.ClientHWAddr.String()] = record
-
 		} else {
-			if record.expires.Before(time.Now().Add(leaseTime)) {
-				record.expires = time.Now().Add(leaseTime).Round(time.Second)
-			}
-		}
+			resp.UpdateOption(dhcpv4.OptGeneric(OptionVendorIdentifierCode{}, []byte("PXEClient")))
 
-		resp, err := dhcpv4.NewReplyFromRequest(m,
-			dhcpv4.WithNetmask(s.Net.Mask),
-			dhcpv4.WithYourIP(record.IP),
-			dhcpv4.WithGatewayIP(s.IP),
-			dhcpv4.WithOption(dhcpv4.OptRouter(s.IP)),
-			dhcpv4.WithOption(dhcpv4.OptIPAddressLeaseTime(leaseTime)),
-			dhcpv4.WithOption(dhcpv4.OptServerIdentifier(s.IP)),
-		)
+			if m.Options[dhcpv4.OptionClientMachineIdentifier.Code()] != nil {
+				resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, m.Options[dhcpv4.OptionClientMachineIdentifier.Code()]))
+			}
+
+			pxe := dhcp4.Options{
+				// PXE Boot Server Discovery Control - bypass, just boot from filename.
+				6: []byte{8},
+			}
+			bs, err := pxe.Marshal()
+			if err != nil {
+				log.Error(err)
+				return
+			}
+			resp.Options[43] = bs
+			resp.ServerIPAddr = s.IP
+		}
 
 		if m.IsOptionRequested(dhcpv4.OptionBootfileName) {
 			log.Printf("received PXE boot request from %s", m.ClientHWAddr)
 
 			log.Printf("sending PXE response to %s", m.ClientHWAddr)
 
-			resp.ServerIPAddr = s.IP
 			resp.UpdateOption(dhcpv4.OptTFTPServerName(s.IP.String()))
 			resp.UpdateOption(dhcpv4.OptBootFileName(fmt.Sprintf("%s/%s/%s", m.ClientHWAddr, m.ClassIdentifier(), m.UserClass())))
 		}
@@ -351,13 +393,16 @@ func (s *Server) handlerDHCP4() server4.Handler {
 		case dhcpv4.MessageTypeDiscover:
 			resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeOffer))
 		case dhcpv4.MessageTypeRequest:
-			resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck))
+			if !s.ProxyDHCP {
+				resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck))
+			}
 		default:
 			log.Printf("unhandled message type: %v", mt)
 
 			return
 		}
 
+		log.Printf(resp.Summary())
 		_, err = conn.WriteTo(resp.ToBytes(), peer)
 		if err != nil {
 			log.Printf("failure sending response: %s", err)

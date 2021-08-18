@@ -42,6 +42,8 @@ func (s *Server) servePXE(conn net.PacketConn) error {
 			return fmt.Errorf("Receiving packet: %s", err)
 		}
 
+		s.debug("PXE", "Received PXE request")
+
 		pkt, err := dhcp4.Unmarshal(buf[:n])
 		if err != nil {
 			s.debug("PXE", "Packet from %s is not a DHCP packet: %s", addr, err)
