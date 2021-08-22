@@ -250,8 +250,9 @@ func (s *Server) handlerDHCP4() server4.Handler {
 			}
 
 			resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, bs))
-			resp.ServerIPAddr = s.IP
 		}
+
+		resp.ServerIPAddr = s.IP
 
 		if m.IsOptionRequested(dhcpv4.OptionBootfileName) {
 			log.Printf("received PXE boot request from %s", m.ClientHWAddr)
