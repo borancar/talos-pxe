@@ -188,11 +188,6 @@ func (s *Server) handlerDHCP4() server4.Handler {
 			return
 		}
 
-		if s.ProxyDHCP && m.MessageType() != dhcpv4.MessageTypeDiscover {
-			log.Infof("Not a discover request")
-			return
-		}
-
 		resp, err := dhcpv4.NewReplyFromRequest(m,
 			dhcpv4.WithOption(dhcpv4.OptServerIdentifier(s.IP)),
 		)

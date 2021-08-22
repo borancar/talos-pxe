@@ -231,6 +231,10 @@ func (s *Server) Shutdown() {
 }
 
 var ipxeMenuTemplate = template.Must(template.New("iPXE Menu").Parse(`#!ipxe
+isset ${proxydhcp/next-server} || goto start
+set next-server ${proxydhcp/next-server}
+set filename ${proxydhcp/filename}
+
 :start
 menu iPXE boot menu for Talos
 item --gap                      Talos Nodes
