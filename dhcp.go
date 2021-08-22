@@ -25,55 +25,6 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4/server4"
 )
 
-func (s *Server) serveDHCP(conn *dhcp4.Conn) error {
-	for {
-		pkt, intf, err := conn.RecvDHCP()
-		if err != nil {
-			return fmt.Errorf("Receiving DHCP packet: %s", err)
-		}
-		if intf == nil {
-			return fmt.Errorf("Received DHCP packet with no interface information (this is a violation of dhcp4.Conn's contract, please file a bug)")
-		}
-
-		if err = s.isBootDHCP(pkt); err != nil {
-			s.debug("DHCP", "Ignoring packet from %s: %s", pkt.HardwareAddr, err)
-			continue
-		}
-		mach, fwtype, err := s.validateDHCP(pkt)
-		if err != nil {
-			s.log("DHCP", "Unusable packet from %s: %s", pkt.HardwareAddr, err)
-			continue
-		}
-
-		s.debug("DHCP", "Got valid request to boot %s (%s)", mach.MAC, mach.Arch)
-
-		s.log("DHCP", "Offering to boot %s", pkt.HardwareAddr)
-		if fwtype == FirmwarePixiecoreIpxe {
-			s.machineEvent(pkt.HardwareAddr, machineStateProxyDHCPIpxe, "Offering to boot iPXE")
-		} else {
-			s.machineEvent(pkt.HardwareAddr, machineStateProxyDHCP, "Offering to boot")
-		}
-
-		// Machine should be booted.
-		serverIP, err := interfaceIP(intf)
-		if err != nil {
-			s.log("DHCP", "Want to boot %s on %s, but couldn't get a source address: %s", pkt.HardwareAddr, intf.Name, err)
-			continue
-		}
-
-		resp, err := s.offerDHCP(pkt, mach, serverIP, fwtype)
-		if err != nil {
-			s.log("DHCP", "Failed to construct ProxyDHCP offer for %s: %s", pkt.HardwareAddr, err)
-			continue
-		}
-
-		if err = conn.SendDHCP(resp, intf); err != nil {
-			s.log("DHCP", "Failed to send ProxyDHCP offer for %s: %s", pkt.HardwareAddr, err)
-			continue
-		}
-	}
-}
-
 func (s *Server) isBootDHCP(pkt *dhcp4.Packet) error {
 	if pkt.Type != dhcp4.MsgDiscover {
 		return fmt.Errorf("packet is %s, not %s", pkt.Type, dhcp4.MsgDiscover)
@@ -84,73 +35,6 @@ func (s *Server) isBootDHCP(pkt *dhcp4.Packet) error {
 	}
 
 	return nil
-}
-
-func (s *Server) validateDHCP(pkt *dhcp4.Packet) (mach Machine, fwtype Firmware, err error) {
-	fwt, err := pkt.Options.Uint16(93)
-	if err != nil {
-		return mach, 0, fmt.Errorf("malformed DHCP option 93 (required for PXE): %s", err)
-	}
-
-	// Basic architecture and firmware identification, based purely on
-	// the PXE architecture option.
-	switch fwt {
-	case 0:
-		mach.Arch = ArchIA32
-		fwtype = FirmwareX86PC
-	case 6:
-		mach.Arch = ArchIA32
-		fwtype = FirmwareEFI32
-	case 7:
-		mach.Arch = ArchX64
-		fwtype = FirmwareEFI64
-	case 9:
-		mach.Arch = ArchX64
-		fwtype = FirmwareEFIBC
-	default:
-		return mach, 0, fmt.Errorf("unsupported client firmware type '%d' (please file a bug!)", fwtype)
-	}
-
-	// Now, identify special sub-breeds of client firmware based on
-	// the user-class option. Note these only change the "firmware
-	// type", not the architecture we're reporting to Booters. We need
-	// to identify these as part of making the internal chainloading
-	// logic work properly.
-	if userClass, err := pkt.Options.String(77); err == nil {
-		// If the client has had iPXE burned into its ROM (or is a VM
-		// that uses iPXE as the PXE "ROM"), special handling is
-		// needed because in this mode the client is using iPXE native
-		// drivers and chainloading to a UNDI stack won't work.
-		if userClass == "iPXE" && fwtype == FirmwareX86PC {
-			fwtype = FirmwareX86Ipxe
-		}
-		// If the client identifies as "pixiecore", we've already
-		// chainloaded this client to the full-featured copy of iPXE
-		// we supply. We have to distinguish this case so we don't
-		// loop on the chainload step.
-		if userClass == "pixiecore" {
-			fwtype = FirmwarePixiecoreIpxe
-		}
-	}
-
-	guid := pkt.Options[97]
-	switch len(guid) {
-	case 0:
-		// A missing GUID is invalid according to the spec, however
-		// there are PXE ROMs in the wild that omit the GUID and still
-		// expect to boot. The only thing we do with the GUID is
-		// mirror it back to the client if it's there, so we might as
-		// well accept these buggy ROMs.
-	case 17:
-		if guid[0] != 0 {
-			return mach, 0, errors.New("malformed client GUID (option 97), leading byte must be zero")
-		}
-	default:
-		return mach, 0, errors.New("malformed client GUID (option 97), wrong size")
-	}
-
-	mach.MAC = pkt.HardwareAddr
-	return mach, fwtype, nil
 }
 
 func (s *Server) offerDHCP(pkt *dhcp4.Packet, mach Machine, serverIP net.IP, fwtype Firmware) (*dhcp4.Packet, error) {
@@ -292,25 +176,20 @@ func (s *Server) getNextFreeIPAddress() (net.IP, error) {
 	return nil, fmt.Errorf("No available IP addresses")
 }
 
-type OptionVendorIdentifierCode struct {
-}
-
-func (o OptionVendorIdentifierCode) Code() uint8 {
-	return 96
-}
-
-func (o OptionVendorIdentifierCode) String() string {
-	return "OptVendorIdentifier"
-}
-
 func (s *Server) handlerDHCP4() server4.Handler {
 	leaseTime := 5*time.Minute
 
 	return func(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4) {
 		log.Infof("DHCPv4: got %s", m.Summary())
 
+
 		if m.OpCode != dhcpv4.OpcodeBootRequest {
 			log.Infof("Not a boot request")
+			return
+		}
+
+		if s.ProxyDHCP && m.MessageType() != dhcpv4.MessageTypeDiscover {
+			log.Infof("Not a discover request")
 			return
 		}
 
@@ -359,7 +238,7 @@ func (s *Server) handlerDHCP4() server4.Handler {
 				return
 			}
 		} else {
-			resp.UpdateOption(dhcpv4.OptGeneric(OptionVendorIdentifierCode{}, []byte("PXEClient")))
+			resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionClassIdentifier, []byte("PXEClient")))
 
 			if m.Options[dhcpv4.OptionClientMachineIdentifier.Code()] != nil {
 				resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, m.Options[dhcpv4.OptionClientMachineIdentifier.Code()]))
@@ -374,7 +253,8 @@ func (s *Server) handlerDHCP4() server4.Handler {
 				log.Error(err)
 				return
 			}
-			resp.Options[43] = bs
+
+			resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, bs))
 			resp.ServerIPAddr = s.IP
 		}
 
@@ -384,7 +264,7 @@ func (s *Server) handlerDHCP4() server4.Handler {
 			log.Printf("sending PXE response to %s", m.ClientHWAddr)
 
 			resp.UpdateOption(dhcpv4.OptTFTPServerName(s.IP.String()))
-			resp.UpdateOption(dhcpv4.OptBootFileName(fmt.Sprintf("%s/%s/%s", m.ClientHWAddr, m.ClassIdentifier(), m.UserClass())))
+			resp.UpdateOption(dhcpv4.OptBootFileName(fmt.Sprintf("tftp://%s/%s/%s/%s", s.IP, m.ClientHWAddr, m.ClassIdentifier(), m.UserClass())))
 		}
 
 		//resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionInterfaceMTU, dhcpv4.Uint16(match.MTU).ToBytes()))
@@ -393,9 +273,7 @@ func (s *Server) handlerDHCP4() server4.Handler {
 		case dhcpv4.MessageTypeDiscover:
 			resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeOffer))
 		case dhcpv4.MessageTypeRequest:
-			if !s.ProxyDHCP {
-				resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck))
-			}
+			resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck))
 		default:
 			log.Printf("unhandled message type: %v", mt)
 
