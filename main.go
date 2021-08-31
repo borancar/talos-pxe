@@ -28,10 +28,14 @@ var log = logrus.New()
 
 const (
 	serverRoot = "."
-	portDHCP = 67
-	portTFTP = 69
-	portHTTP = 8080
-	portPXE  = 4011
+	portDNS    = 53
+	portDHCP   = 67
+	portTFTP   = 69
+	portHTTP   = 8080
+	portPXE    = 4011
+	forwardDns = "1.1.1.1:53"
+
+	controlplaneEndpoint = "controlplane.talos."
 )
 
 // Architecture describes a kind of CPU architecture.
@@ -98,6 +102,8 @@ type Server struct {
 
 	Net *net.IPNet
 
+	ForwardDns []string
+
 	Intf string
 
 	ProxyDHCP bool
@@ -112,6 +118,11 @@ type Server struct {
 	DHCPLock sync.Mutex
 	DHCPRecords map[string]*DHCPRecord
 
+	DNSRWLock sync.RWMutex
+	DNSRecordsv4 map[string][]net.IP
+	DNSRecordsv6 map[string][]net.IP
+	DNSRRecords map[string][]string
+
 	IPLock sync.Mutex
 	IPRecords map[string]bool
 
@@ -122,6 +133,7 @@ type Server struct {
 	TFTPPort int
 	PXEPort  int
 	HTTPPort int
+	DNSPort  int
 
 	errs chan error
 
@@ -155,6 +167,13 @@ func (s *Server) Serve() error {
 	if s.HTTPPort == 0 {
 		s.HTTPPort = portHTTP
 	}
+	if s.DNSPort == 0 {
+		s.DNSPort = portDNS
+	}
+
+	if len(s.ForwardDns) == 0 {
+		s.ForwardDns = []string{forwardDns}
+	}
 
 	if s.ServerRoot == "" {
 		s.ServerRoot = serverRoot
@@ -175,9 +194,16 @@ func (s *Server) Serve() error {
 		pxe.Close()
 		return err
 	}
+	dns, err := net.ListenPacket("udp", fmt.Sprintf("%s:%d", s.IP, s.DNSPort))
+	if err != nil {
+		http.Close()
+		tftp.Close()
+		pxe.Close()
+		return err
+	}
 
 	s.events = make(map[string][]machineEvent)
-	// 5 buffer slots, one for each goroutine, plus one for
+	// 6 buffer slots, one for each goroutine, plus one for
 	// Shutdown(). We only ever pull the first error out, but shutdown
 	// will likely generate some spurious errors from the other
 	// goroutines, and we want them to be able to dump them without
@@ -190,9 +216,11 @@ func (s *Server) Serve() error {
 	go func() { s.errs <- s.serveTFTP(tftp) }()
 	go func() { s.errs <- s.startMatchbox(http) }()
 	go func() { s.errs <- s.startDhcp() }()
+	go func() { s.errs <- s.serveDNS(dns) }()
 
 	// Wait for either a fatal error, or Shutdown().
 	err = <-s.errs
+	dns.Close()
 	http.Close()
 	tftp.Close()
 	pxe.Close()
@@ -250,13 +278,13 @@ set menu-timeout 0
 goto ${selected}
 
 :init
-chain http://{{ .IP }}:8080/ipxe?uuid=${uuid}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=init
+chain http://{{ .IP }}:8080/ipxe?uuid=${uuid}&ip=${ip}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=init
 
 :controlplane
-chain http://{{ .IP }}:8080/ipxe?uuid=${uuid}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=controlplane
+chain http://{{ .IP }}:8080/ipxe?uuid=${uuid}&ip=${ip}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=controlplane
 
 :worker
-chain http://{{ .IP }}:8080/ipxe?uuid=${uuid}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=worker
+chain http://{{ .IP }}:8080/ipxe?uuid=${uuid}&ip=${ip}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=worker
 
 :reboot
 reboot
@@ -267,15 +295,6 @@ shell
 :exit
 exit
 `))
-
-type ProxyServer struct {
-	DhcpIp string
-	Netmask string
-}
-
-type StandaloneServer struct {
-	IpMin, IpMax string
-}
 
 func getPrivateAddress() (net.IP, error) {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
@@ -387,6 +406,19 @@ func (s *Server) ipxeWrapperMenuHandler(primaryHandler http.Handler) http.Handle
 		primaryHandler.ServeHTTP(rr, req)
 
 		if status := rr.Code; status == http.StatusOK {
+			req.ParseForm()
+			machineType := req.Form.Get("type")
+			remoteIp := net.ParseIP(req.Form.Get("ip"))
+			log.Infof("Selecting %s for %s", machineType, remoteIp)
+
+			if machineType == "init" || machineType == "master" {
+				s.DNSRWLock.Lock()
+				defer s.DNSRWLock.Unlock()
+				records := s.DNSRecordsv4[controlplaneEndpoint]
+				records = append(records, remoteIp)
+				s.DNSRecordsv4[controlplaneEndpoint] = records
+			}
+
 			for key, values := range rr.HeaderMap {
 				for _, value := range values {
 					w.Header().Add(key, value)
@@ -441,6 +473,9 @@ func main() {
 		Intf: eth0.NetInterface().Name,
 		IPRecords: make(map[string]bool),
 		DHCPRecords: make(map[string]*DHCPRecord),
+		DNSRecordsv4: make(map[string][]net.IP),
+		DNSRecordsv6: make(map[string][]net.IP),
+		DNSRRecords: make(map[string][]string),
 		Log: func(subsystem, msg string) {
 			log.Infof("%s: %s", subsystem, msg)
 		},
@@ -457,8 +492,20 @@ func main() {
 			Mask: lease.Netmask,
 		}
 
-		if err := eth0.SetLinkIp(net.IP, net); err != nil {
+		if err := eth0.SetLinkIp(net.IP, net); err != nil && err != syscall.EEXIST {
 			log.Panic(err)
+		}
+
+		for _, routerIp := range lease.Router {
+			log.Infof("Adding default GW %s\n", routerIp)
+			if err := eth0.SetLinkDefaultGw(&routerIp); err != nil && err != syscall.EEXIST {
+				log.Panic(err)
+			}
+		}
+
+		for _, dns := range lease.DNS {
+			log.Infof("Adding DNS %s\n", dns)
+			server.ForwardDns = append(server.ForwardDns, fmt.Sprintf("%s:53", dns))
 		}
 
 		server.IP = lease.FixedAddress
