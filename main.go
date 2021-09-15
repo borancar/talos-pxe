@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"net"
@@ -22,6 +23,8 @@ import (
 	web "github.com/poseidon/matchbox/matchbox/http"
 	"github.com/poseidon/matchbox/matchbox/server"
 	"github.com/poseidon/matchbox/matchbox/storage"
+        "github.com/coredhcp/coredhcp/plugins/allocators"
+        "github.com/coredhcp/coredhcp/plugins/allocators/bitmap"
 )
 
 var log = logrus.New()
@@ -117,6 +120,7 @@ type Server struct {
 
 	DHCPLock sync.Mutex
 	DHCPRecords map[string]*DHCPRecord
+	DHCPAllocator allocators.Allocator
 
 	DNSRWLock sync.RWMutex
 	DNSRecordsv4 map[string][]net.IP
@@ -441,6 +445,22 @@ func (s *Server) ipxeWrapperMenuHandler(primaryHandler http.Handler) http.Handle
 	return http.HandlerFunc(fn)
 }
 
+func getAvailableRange(netIp net.IPNet, netServer net.IP) (net.IP, net.IP) {
+    mask := binary.BigEndian.Uint32(netIp.Mask)
+    start := binary.BigEndian.Uint32(netServer.To4())
+
+    first := start + 1
+    last := ((start & mask) | (mask ^ 0xffffffff)) - 1
+
+    firstIp := make(net.IP, 4)
+    lastIp := make(net.IP, 4)
+
+    binary.BigEndian.PutUint32(firstIp, first)
+    binary.BigEndian.PutUint32(lastIp, last)
+
+    return firstIp, lastIp
+}
+
 func main() {
 	serverRootFlag := flag.String("root", "", "Server root, where to serve the files from")
 	flag.Parse()
@@ -512,12 +532,17 @@ func main() {
 		server.ProxyDHCP = true
 	} else {
 		netIp, netNet, err := net.ParseCIDR("192.168.123.1/24")
+		firstIp, lastIp := getAvailableRange(*netNet, netIp)
+		fmt.Printf("Setting manual address %s, leasing out subnet %s (available range %s - %s)\n", netIp, netNet, firstIp, lastIp)
 
 		server.IP = netIp
 		server.Net = netNet
 		server.ProxyDHCP = false
 
-		fmt.Printf("Setting manual address %s, leasing out subnet %s\n", netIp, netNet)
+		server.DHCPAllocator, err = bitmap.NewIPv4Allocator(firstIp, lastIp)
+		if err != nil {
+			log.Panic(err)
+		}
 
 		if err != nil {
 			log.Panic(err)

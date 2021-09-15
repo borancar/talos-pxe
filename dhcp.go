@@ -153,29 +153,6 @@ func interfaceIP(intf *net.Interface) (net.IP, error) {
 	return nil, errors.New("no usable unicast address configured on interface")
 }
 
-func ipAdd(base net.IP, offset int) net.IP {
-	baseBytes := base.To4()
-
-	return net.IPv4(baseBytes[0], baseBytes[1], baseBytes[2], baseBytes[3] + byte(offset))
-}
-
-func (s *Server) getNextFreeIPAddress() (net.IP, error) {
-	s.IPLock.Lock()
-	defer s.IPLock.Unlock()
-
-	for offset := 1; offset < 254; offset++ {
-		candidate := ipAdd(s.IP, offset)
-		_, candidateInUse := s.IPRecords[candidate.String()]
-
-		if s.Net.Contains(candidate) && !candidateInUse {
-			s.IPRecords[candidate.String()] = true
-			return candidate, nil
-		}
-	}
-
-	return nil, fmt.Errorf("No available IP addresses")
-}
-
 func (s *Server) handlerDHCP4() server4.Handler {
 	leaseTime := 5*time.Minute
 
@@ -202,14 +179,14 @@ func (s *Server) handlerDHCP4() server4.Handler {
 
 			record, ok := s.DHCPRecords[m.ClientHWAddr.String()]
 			if !ok {
-				newIp, err := s.getNextFreeIPAddress()
+				newIp, err := s.DHCPAllocator.Allocate(net.IPNet{})
 				if err != nil {
 					log.Error(err)
 					return
 				}
 
 				record = &DHCPRecord{
-					IP: newIp,
+					IP: newIp.IP,
 					expires: time.Now().Add(leaseTime),
 				}
 				s.DHCPRecords[m.ClientHWAddr.String()] = record

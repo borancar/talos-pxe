@@ -10,6 +10,13 @@ github.com/apparentlymart/go-cidr/cidr
 github.com/beorn7/perks/quantile
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
+# github.com/chappjc/logrus-prefix v0.0.0-20180227015900-3a1d64819adb
+github.com/chappjc/logrus-prefix
+# github.com/coredhcp/coredhcp v0.0.0-20210830115404-2176f33418f4
+## explicit
+github.com/coredhcp/coredhcp/logger
+github.com/coredhcp/coredhcp/plugins/allocators
+github.com/coredhcp/coredhcp/plugins/allocators/bitmap
 # github.com/coredns/caddy v1.1.0
 github.com/coredns/caddy
 github.com/coredns/caddy/caddyfile
@@ -95,7 +102,7 @@ github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
-# github.com/google/gopacket v1.1.17
+# github.com/google/gopacket v1.1.19
 ## explicit
 github.com/google/gopacket
 github.com/google/gopacket/layers
@@ -108,12 +115,16 @@ github.com/insomniacslk/dhcp/dhcpv4/server4
 github.com/insomniacslk/dhcp/iana
 github.com/insomniacslk/dhcp/interfaces
 github.com/insomniacslk/dhcp/rfc1035label
-# github.com/konsorten/go-windows-terminal-sequences v1.0.3
-github.com/konsorten/go-windows-terminal-sequences
+# github.com/mattn/go-colorable v0.1.8
+github.com/mattn/go-colorable
+# github.com/mattn/go-isatty v0.0.12
+github.com/mattn/go-isatty
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/mdlayher/raw v0.0.0-20191009151244-50f2db8cc065
 github.com/mdlayher/raw
+# github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d
+github.com/mgutz/ansi
 # github.com/miekg/dns v1.1.42
 ## explicit
 github.com/miekg/dns
@@ -146,7 +157,9 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/sirupsen/logrus v1.6.0
+# github.com/rifflock/lfshook v0.0.0-20180920164130-b9218ef580f5
+github.com/rifflock/lfshook
+# github.com/sirupsen/logrus v1.7.0
 ## explicit
 github.com/sirupsen/logrus
 # github.com/u-root/uio v0.0.0-20210528114334-82958018845c
@@ -155,6 +168,8 @@ github.com/u-root/uio/ubinary
 github.com/u-root/uio/uio
 # github.com/vincent-petithory/dataurl v0.0.0-20160330182126-9a301d65acbb
 github.com/vincent-petithory/dataurl
+# github.com/willf/bitset v1.1.11
+github.com/willf/bitset
 # go.universe.tf/netboot v0.0.0-20210617221821-fc2840fa7b05
 ## explicit
 go.universe.tf/netboot/dhcp4
@@ -169,6 +184,7 @@ golang.org/x/crypto/openpgp/elgamal
 golang.org/x/crypto/openpgp/errors
 golang.org/x/crypto/openpgp/packet
 golang.org/x/crypto/openpgp/s2k
+golang.org/x/crypto/ssh/terminal
 # golang.org/x/net v0.0.0-20210503060351-7fd8e65b6420
 ## explicit
 golang.org/x/net/bpf
@@ -185,8 +201,11 @@ golang.org/x/net/ipv6
 golang.org/x/net/trace
 # golang.org/x/sys v0.0.0-20210525143221-35b2ab0089ea
 golang.org/x/sys/internal/unsafeheader
+golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
+# golang.org/x/term v0.0.0-20210220032956-6a3ed077a48d
+golang.org/x/term
 # golang.org/x/text v0.3.6
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
