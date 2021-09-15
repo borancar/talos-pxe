@@ -162,6 +162,9 @@ github.com/rifflock/lfshook
 # github.com/sirupsen/logrus v1.7.0
 ## explicit
 github.com/sirupsen/logrus
+# github.com/spf13/pflag v1.0.6-0.20201009195203-85dd5c8bc61c
+## explicit
+github.com/spf13/pflag
 # github.com/u-root/uio v0.0.0-20210528114334-82958018845c
 github.com/u-root/uio/rand
 github.com/u-root/uio/ubinary

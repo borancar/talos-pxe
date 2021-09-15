@@ -12,6 +12,7 @@ require (
 	github.com/milosgajdos/tenus v0.0.3
 	github.com/poseidon/matchbox v0.9.0
 	github.com/sirupsen/logrus v1.7.0
+	github.com/spf13/pflag v1.0.6-0.20201009195203-85dd5c8bc61c
 	go.universe.tf/netboot v0.0.0-20210617221821-fc2840fa7b05
 	golang.org/x/net v0.0.0-20210503060351-7fd8e65b6420
 )

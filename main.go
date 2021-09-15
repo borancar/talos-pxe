@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"flag"
 	"fmt"
 	"net"
 	"net/http"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	flag "github.com/spf13/pflag"
 	"github.com/digineo/go-dhclient"
 	"github.com/google/gopacket/layers"
 	"github.com/milosgajdos/tenus"
@@ -102,6 +102,7 @@ type Server struct {
 	ServerRoot string
 
 	IP net.IP
+	GWIP net.IP
 
 	Net *net.IPNet
 
@@ -119,9 +120,6 @@ type Server struct {
 	DNSRecordsv4 map[string][]net.IP
 	DNSRecordsv6 map[string][]net.IP
 	DNSRRecords map[string][]string
-
-	IPLock sync.Mutex
-	IPRecords map[string]bool
 
 	// These ports can technically be set for testing, but the
 	// protocols burned in firmware on the client side hardcode these,
@@ -448,18 +446,11 @@ func getAvailableRange(netIp net.IPNet, netServer net.IP) (net.IP, net.IP) {
 
 func main() {
 	serverRootFlag := flag.String("root", "", "Server root, where to serve the files from")
+	ifName := flag.String("if", "eth0", "Interface to use")
+	ipAddr := flag.String("addr", "192.168.123.1/24", "Address to listen on")
+	gwAddr := flag.String("gw", "", "Override gateway address")
+	dnsAddr := flag.String("dns", "", "Override DNS address")
 	flag.Parse()
-
-	eth0, err := tenus.NewLinkFrom("eth0")
-	if err != nil {
-		log.Panic(err)
-	}
-
-	if err := eth0.SetLinkUp(); err != nil {
-		log.Panic(err)
-	}
-
-	log.Infof("Brought %s up\n", eth0.NetInterface().Name)
 
 	validInterfaces, err := getValidInterfaces()
 	if err != nil {
@@ -471,12 +462,24 @@ func main() {
 		log.Infof(" - %s\n", iface.Name)
 	}
 
-	lease, err := runDhclient(context.Background(), eth0.NetInterface())
+	log.Infof("Select interface %s", *ifName)
+
+	eth, err := tenus.NewLinkFrom(*ifName)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	if err := eth.SetLinkUp(); err != nil {
+		log.Panic(err)
+	}
+
+	log.Infof("Brought %s up\n", eth.NetInterface().Name)
+
+	lease, err := runDhclient(context.Background(), eth.NetInterface())
 
 	server := &Server{
 		ServerRoot: *serverRootFlag,
-		Intf: eth0.NetInterface().Name,
-		IPRecords: make(map[string]bool),
+		Intf: eth.NetInterface().Name,
 		DHCPRecords: make(map[string]*DHCPRecord),
 		DNSRecordsv4: make(map[string][]net.IP),
 		DNSRecordsv6: make(map[string][]net.IP),
@@ -491,13 +494,13 @@ func main() {
 			Mask: lease.Netmask,
 		}
 
-		if err := eth0.SetLinkIp(net.IP, net); err != nil && err != syscall.EEXIST {
+		if err := eth.SetLinkIp(net.IP, net); err != nil && err != syscall.EEXIST {
 			log.Panic(err)
 		}
 
 		for _, routerIp := range lease.Router {
 			log.Infof("Adding default GW %s\n", routerIp)
-			if err := eth0.SetLinkDefaultGw(&routerIp); err != nil && err != syscall.EEXIST {
+			if err := eth.SetLinkDefaultGw(&routerIp); err != nil && err != syscall.EEXIST {
 				log.Panic(err)
 			}
 		}
@@ -510,7 +513,7 @@ func main() {
 		server.IP = lease.FixedAddress
 		server.ProxyDHCP = true
 	} else {
-		netIp, netNet, err := net.ParseCIDR("192.168.123.1/24")
+		netIp, netNet, err := net.ParseCIDR(*ipAddr)
 		firstIp, lastIp := getAvailableRange(*netNet, netIp)
 		log.Infof("Setting manual address %s, leasing out subnet %s (available range %s - %s)\n", netIp, netNet, firstIp, lastIp)
 
@@ -527,9 +530,21 @@ func main() {
 			log.Panic(err)
 		}
 
-		if err := eth0.SetLinkIp(netIp, netNet); err != nil && err != syscall.EEXIST {
+		if err := eth.SetLinkIp(netIp, netNet); err != nil && err != syscall.EEXIST {
 			log.Panic(err)
 		}
+	}
+
+	if *gwAddr != "" {
+	    log.Infof("Overriding gateway address with %s", *gwAddr)
+	    server.GWIP = net.ParseIP(*gwAddr)
+	} else {
+	    server.GWIP = server.IP
+	}
+
+	if *dnsAddr != "" {
+	    log.Infof("Overriding DNS addressw with %s", *dnsAddr)
+	    server.ForwardDns = []string{*dnsAddr}
 	}
 
 	if err := server.Serve(); err != nil {

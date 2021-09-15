@@ -199,8 +199,8 @@ func (s *Server) handlerDHCP4() server4.Handler {
 			resp, err = dhcpv4.NewReplyFromRequest(m,
 				dhcpv4.WithNetmask(s.Net.Mask),
 				dhcpv4.WithYourIP(record.IP),
-				dhcpv4.WithGatewayIP(s.IP),
-				dhcpv4.WithOption(dhcpv4.OptRouter(s.IP)),
+				dhcpv4.WithGatewayIP(s.GWIP),
+				dhcpv4.WithOption(dhcpv4.OptRouter(s.GWIP)),
 				dhcpv4.WithOption(dhcpv4.OptIPAddressLeaseTime(leaseTime)),
 				dhcpv4.WithOption(dhcpv4.OptServerIdentifier(s.IP)),
 			)
