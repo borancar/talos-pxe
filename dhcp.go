@@ -261,12 +261,25 @@ func (s *Server) handlerDHCP4() server4.Handler {
 	}
 }
 
+type DHCPLogger struct {
+}
+
+func (l DHCPLogger) PrintMessage(prefix string, message *dhcpv4.DHCPv4) {
+	log.Infof("%s: %v", prefix, message)
+}
+
+func (l DHCPLogger) Printf(format string, v ...interface{}) {
+	log.Infof(format, v...)
+}
+
 func (s *Server) startDhcp() error {
+	logger := DHCPLogger{}
+
 	server, err := server4.NewServer(
 		s.Intf,
 		nil,
 		s.handlerDHCP4(),
-		server4.WithSummaryLogger(),
+		server4.WithLogger(logger),
 	)
 
 	if err != nil {
