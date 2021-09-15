@@ -141,6 +141,19 @@ func ptr(zone string, ttl uint32, names []string) []dns.RR {
 	return answers
 }
 
+func (s *Server) registerDNSEntry(entry string, ip net.IP) {
+	s.DNSRWLock.Lock()
+	defer s.DNSRWLock.Unlock()
+	records := s.DNSRecordsv4[entry]
+	for _, r := range records {
+		if r.Equal(ip) {
+			return
+		}
+	}
+	records = append(records, ip)
+	s.DNSRecordsv4[controlplaneEndpoint] = records
+}
+
 func (s *Server) serveDNS(l net.PacketConn) error {
 	zone := "talos."
 

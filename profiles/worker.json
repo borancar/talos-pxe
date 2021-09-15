@@ -1,6 +1,6 @@
 {
-  "id": "default",
-  "name": "default",
+  "id": "worker",
+  "name": "worker",
   "boot": {
     "kernel": "/assets/vmlinuz-amd64",
     "initrd": ["/assets/initramfs-amd64.xz"],

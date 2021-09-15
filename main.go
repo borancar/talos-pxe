@@ -416,11 +416,7 @@ func (s *Server) ipxeWrapperMenuHandler(primaryHandler http.Handler) http.Handle
 			log.Infof("Selecting %s for %s", machineType, remoteIp)
 
 			if machineType == "init" || machineType == "master" {
-				s.DNSRWLock.Lock()
-				defer s.DNSRWLock.Unlock()
-				records := s.DNSRecordsv4[controlplaneEndpoint]
-				records = append(records, remoteIp)
-				s.DNSRecordsv4[controlplaneEndpoint] = records
+				s.registerDNSEntry(controlplaneEndpoint, remoteIp)
 			}
 
 			for key, values := range rr.HeaderMap {
