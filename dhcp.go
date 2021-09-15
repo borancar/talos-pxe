@@ -232,9 +232,9 @@ func (s *Server) handlerDHCP4() server4.Handler {
 		resp.ServerIPAddr = s.IP
 
 		if m.IsOptionRequested(dhcpv4.OptionBootfileName) {
-			log.Printf("received PXE boot request from %s", m.ClientHWAddr)
+			log.Infof("received PXE boot request from %s", m.ClientHWAddr)
 
-			log.Printf("sending PXE response to %s", m.ClientHWAddr)
+			log.Infof("sending PXE response to %s", m.ClientHWAddr)
 
 			resp.UpdateOption(dhcpv4.OptTFTPServerName(s.IP.String()))
 			resp.UpdateOption(dhcpv4.OptBootFileName(fmt.Sprintf("tftp://%s/%s/%s/%s", s.IP, m.ClientHWAddr, m.ClassIdentifier(), m.UserClass())))
@@ -248,12 +248,12 @@ func (s *Server) handlerDHCP4() server4.Handler {
 		case dhcpv4.MessageTypeRequest:
 			resp.UpdateOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck))
 		default:
-			log.Printf("unhandled message type: %v", mt)
+			log.Errorf("unhandled message type: %v", mt)
 
 			return
 		}
 
-		log.Printf(resp.Summary())
+		log.Debugf(resp.Summary())
 		_, err = conn.WriteTo(resp.ToBytes(), peer)
 		if err != nil {
 			log.Printf("failure sending response: %s", err)
