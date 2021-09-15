@@ -111,13 +111,6 @@ type Server struct {
 
 	ProxyDHCP bool
 
-	// Log receives logs on Pixiecore's operation. If nil, logging
-	// is suppressed.
-	Log func(subsystem, msg string)
-	// Debug receives extensive logging on Pixiecore's internals. Very
-	// useful for debugging, but very verbose.
-	Debug func(subsystem, msg string)
-
 	DHCPLock sync.Mutex
 	DHCPRecords map[string]*DHCPRecord
 	DHCPAllocator allocators.Allocator
@@ -140,9 +133,6 @@ type Server struct {
 	DNSPort  int
 
 	errs chan error
-
-	eventsMu sync.Mutex
-	events   map[string][]machineEvent
 }
 
 func (s *Server) Ipxe(classId, classInfo string) ([]byte, error) {
@@ -206,7 +196,6 @@ func (s *Server) Serve() error {
 		return err
 	}
 
-	s.events = make(map[string][]machineEvent)
 	// 6 buffer slots, one for each goroutine, plus one for
 	// Shutdown(). We only ever pull the first error out, but shutdown
 	// will likely generate some spurious errors from the other
@@ -214,7 +203,7 @@ func (s *Server) Serve() error {
 	// blocking.
 	s.errs = make(chan error, 6)
 
-	s.debug("Init", "Starting servers")
+	log.Info("Starting servers")
 
 	go func() { s.errs <- s.servePXE(pxe) }()
 	go func() { s.errs <- s.serveTFTP(tftp) }()
@@ -492,12 +481,6 @@ func main() {
 		DNSRecordsv4: make(map[string][]net.IP),
 		DNSRecordsv6: make(map[string][]net.IP),
 		DNSRRecords: make(map[string][]string),
-		Log: func(subsystem, msg string) {
-			log.Infof("%s: %s", subsystem, msg)
-		},
-		Debug: func(subsystem, msg string) {
-			log.Infof("%s: %s", subsystem, msg)
-		},
 	}
 
 	if lease != nil {
@@ -529,7 +512,7 @@ func main() {
 	} else {
 		netIp, netNet, err := net.ParseCIDR("192.168.123.1/24")
 		firstIp, lastIp := getAvailableRange(*netNet, netIp)
-		fmt.Printf("Setting manual address %s, leasing out subnet %s (available range %s - %s)\n", netIp, netNet, firstIp, lastIp)
+		log.Infof("Setting manual address %s, leasing out subnet %s (available range %s - %s)\n", netIp, netNet, firstIp, lastIp)
 
 		server.IP = netIp
 		server.Net = netNet

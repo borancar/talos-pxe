@@ -42,53 +42,51 @@ func (s *Server) servePXE(conn net.PacketConn) error {
 			return fmt.Errorf("Receiving packet: %s", err)
 		}
 
-		s.debug("PXE", "Received PXE request")
+		log.Debug("Received PXE request")
 
 		pkt, err := dhcp4.Unmarshal(buf[:n])
 		if err != nil {
-			s.debug("PXE", "Packet from %s is not a DHCP packet: %s", addr, err)
+			log.Debugf("Packet from %s is not a DHCP packet: %s", addr, err)
 			continue
 		}
 
 		if err = s.isBootDHCP(pkt); err != nil {
-			s.debug("PXE", "Ignoring packet from %s (%s): %s", pkt.HardwareAddr, addr, err)
+			log.Debugf("Ignoring packet from %s (%s): %s", pkt.HardwareAddr, addr, err)
 		}
 		fwtype, err := s.validatePXE(pkt)
 		if err != nil {
-			s.log("PXE", "Unusable packet from %s (%s): %s", pkt.HardwareAddr, addr, err)
+			log.Errorf("Unusable packet from %s (%s): %s", pkt.HardwareAddr, addr, err)
 			continue
 		}
 
 		intf, err := net.InterfaceByIndex(msg.IfIndex)
 		if err != nil {
-			s.log("PXE", "Couldn't get information about local network interface %d: %s", msg.IfIndex, err)
+			log.Errorf("Couldn't get information about local network interface %d: %s", msg.IfIndex, err)
 			continue
 		}
 
 		serverIP, err := interfaceIP(intf)
 		if err != nil {
-			s.log("PXE", "Want to boot %s (%s) on %s, but couldn't get a source address: %s", pkt.HardwareAddr, addr, intf.Name, err)
+			log.Errorf("Want to boot %s (%s) on %s, but couldn't get a source address: %s", pkt.HardwareAddr, addr, intf.Name, err)
 			continue
 		}
 
-		s.machineEvent(pkt.HardwareAddr, machineStatePXE, "Sent PXE configuration")
-
 		resp, err := s.offerPXE(pkt, serverIP, fwtype)
 		if err != nil {
-			s.log("PXE", "Failed to construct PXE offer for %s (%s): %s", pkt.HardwareAddr, addr, err)
+			log.Errorf("Failed to construct PXE offer for %s (%s): %s", pkt.HardwareAddr, addr, err)
 			continue
 		}
 
 		bs, err := resp.Marshal()
 		if err != nil {
-			s.log("PXE", "Failed to marshal PXE offer for %s (%s): %s", pkt.HardwareAddr, addr, err)
+			log.Errorf("Failed to marshal PXE offer for %s (%s): %s", pkt.HardwareAddr, addr, err)
 			continue
 		}
 
 		if _, err := l.WriteTo(bs, &ipv4.ControlMessage{
 			IfIndex: msg.IfIndex,
 		}, addr); err != nil {
-			s.log("PXE", "Failed to send PXE response to %s (%s): %s", pkt.HardwareAddr, addr, err)
+			log.Errorf("Failed to send PXE response to %s (%s): %s", pkt.HardwareAddr, addr, err)
 		}
 	}
 }

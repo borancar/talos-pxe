@@ -157,8 +157,7 @@ func (s *Server) handlerDHCP4() server4.Handler {
 	leaseTime := 5*time.Minute
 
 	return func(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4) {
-		log.Infof("DHCPv4: got %s", m.Summary())
-
+		log.Debugf("DHCPv4: got %s", m.Summary())
 
 		if m.OpCode != dhcpv4.OpcodeBootRequest {
 			log.Infof("Not a boot request")

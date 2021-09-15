@@ -26,7 +26,7 @@ type ServiceLookupPlugin struct{
 }
 
 func (s ServiceLookupPlugin) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
-	log.Printf("DNS request: %v", r)
+	log.Debugf("DNS request: %v", r)
 	state := request.Request{W: w, Req: r}
 	qname := state.Name()
 

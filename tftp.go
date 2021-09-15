@@ -29,7 +29,6 @@ import (
 func (s *Server) serveTFTP(l net.PacketConn) error {
 	ts := tftp.Server{
 		Handler:     s.handleTFTP,
-		InfoLog:     func(msg string) { s.debug("TFTP", msg) },
 		TransferLog: s.logTFTPTransfer,
 	}
 	err := ts.Serve(l)
@@ -57,16 +56,15 @@ func extractInfo(path string) (net.HardwareAddr, string, string, error) {
 }
 
 func (s *Server) logTFTPTransfer(clientAddr net.Addr, path string, err error) {
-	mac, _, _, pathErr := extractInfo(path)
+	_, _, _, pathErr := extractInfo(path)
 	if pathErr != nil {
-		s.log("TFTP", "unable to extract mac from request:%v", pathErr)
+		log.Errorf("unable to extract mac from request:%v", pathErr)
 		return
 	}
 	if err != nil {
-		s.log("TFTP", "Send of %q to %s failed: %s", path, clientAddr, err)
+		log.Errorf("Send of %q to %s failed: %s", path, clientAddr, err)
 	} else {
-		s.log("TFTP", "Sent %q to %s", path, clientAddr)
-		s.machineEvent(mac, machineStateTFTP, "Sent iPXE to %s", clientAddr)
+		log.Infof("Sent %q to %s", path, clientAddr)
 	}
 }
 
