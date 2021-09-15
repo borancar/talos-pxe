@@ -23,7 +23,7 @@ assets/vmlinuz-amd64
 Generate the configuration via:
 
 ```
-talosctl gen config -o assets talos-k8s-metal-tutorial https://controlplane.local:8443
+talosctl gen config -o assets talos-k8s-metal-tutorial https://controlplane.talos:8443
 sed 's/type: controlplane/type: init/' assets/controlplane.yaml > assets/init.yaml
 ```
 
