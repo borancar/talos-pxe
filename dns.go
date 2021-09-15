@@ -151,7 +151,7 @@ func (s *Server) registerDNSEntry(entry string, ip net.IP) {
 		}
 	}
 	records = append(records, ip)
-	s.DNSRecordsv4[controlplaneEndpoint] = records
+	s.DNSRecordsv4[entry] = records
 }
 
 func (s *Server) serveDNS(l net.PacketConn) error {

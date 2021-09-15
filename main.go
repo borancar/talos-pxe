@@ -30,15 +30,12 @@ import (
 var log = logrus.New()
 
 const (
-	serverRoot = "."
 	portDNS    = 53
 	portDHCP   = 67
 	portTFTP   = 69
 	portHTTP   = 8080
 	portPXE    = 4011
 	forwardDns = "1.1.1.1:53"
-
-	controlplaneEndpoint = "controlplane.talos."
 )
 
 // Architecture describes a kind of CPU architecture.
@@ -110,6 +107,8 @@ type Server struct {
 
 	Intf string
 
+	Controlplane string
+
 	ProxyDHCP bool
 
 	DHCPLock sync.Mutex
@@ -165,10 +164,6 @@ func (s *Server) Serve() error {
 
 	if len(s.ForwardDns) == 0 {
 		s.ForwardDns = []string{forwardDns}
-	}
-
-	if s.ServerRoot == "" {
-		s.ServerRoot = serverRoot
 	}
 
 	tftp, err := net.ListenPacket("udp", fmt.Sprintf("%s:%d", s.IP, s.TFTPPort))
@@ -403,7 +398,7 @@ func (s *Server) ipxeWrapperMenuHandler(primaryHandler http.Handler) http.Handle
 			log.Infof("Selecting %s for %s", machineType, remoteIp)
 
 			if machineType == "init" || machineType == "controlplane" {
-				s.registerDNSEntry(controlplaneEndpoint, remoteIp)
+				s.registerDNSEntry(s.Controlplane, remoteIp)
 			}
 
 			for key, values := range rr.HeaderMap {
@@ -445,11 +440,12 @@ func getAvailableRange(netIp net.IPNet, netServer net.IP) (net.IP, net.IP) {
 }
 
 func main() {
-	serverRootFlag := flag.String("root", "", "Server root, where to serve the files from")
-	ifName := flag.String("if", "eth0", "Interface to use")
-	ipAddr := flag.String("addr", "192.168.123.1/24", "Address to listen on")
-	gwAddr := flag.String("gw", "", "Override gateway address")
-	dnsAddr := flag.String("dns", "", "Override DNS address")
+	serverRootFlag := flag.String("root", ".", "Server root, where to serve the files from")
+	ifNameFlag := flag.String("if", "eth0", "Interface to use")
+	ipAddrFlag := flag.String("addr", "192.168.123.1/24", "Address to listen on")
+	gwAddrFlag := flag.String("gw", "", "Override gateway address")
+	dnsAddrFlag := flag.String("dns", "", "Override DNS address")
+	controlplaneFlag := flag.String("controlplane", "controlplane.talos.", "Controlplane address")
 	flag.Parse()
 
 	validInterfaces, err := getValidInterfaces()
@@ -462,9 +458,9 @@ func main() {
 		log.Infof(" - %s\n", iface.Name)
 	}
 
-	log.Infof("Select interface %s", *ifName)
+	log.Infof("Select interface %s", *ifNameFlag)
 
-	eth, err := tenus.NewLinkFrom(*ifName)
+	eth, err := tenus.NewLinkFrom(*ifNameFlag)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -480,6 +476,7 @@ func main() {
 	server := &Server{
 		ServerRoot: *serverRootFlag,
 		Intf: eth.NetInterface().Name,
+		Controlplane: *controlplaneFlag,
 		DHCPRecords: make(map[string]*DHCPRecord),
 		DNSRecordsv4: make(map[string][]net.IP),
 		DNSRecordsv6: make(map[string][]net.IP),
@@ -513,7 +510,7 @@ func main() {
 		server.IP = lease.FixedAddress
 		server.ProxyDHCP = true
 	} else {
-		netIp, netNet, err := net.ParseCIDR(*ipAddr)
+		netIp, netNet, err := net.ParseCIDR(*ipAddrFlag)
 		firstIp, lastIp := getAvailableRange(*netNet, netIp)
 		log.Infof("Setting manual address %s, leasing out subnet %s (available range %s - %s)\n", netIp, netNet, firstIp, lastIp)
 
@@ -535,16 +532,16 @@ func main() {
 		}
 	}
 
-	if *gwAddr != "" {
-	    log.Infof("Overriding gateway address with %s", *gwAddr)
-	    server.GWIP = net.ParseIP(*gwAddr)
+	if *gwAddrFlag != "" {
+	    log.Infof("Overriding gateway address with %s", *gwAddrFlag)
+	    server.GWIP = net.ParseIP(*gwAddrFlag)
 	} else {
 	    server.GWIP = server.IP
 	}
 
-	if *dnsAddr != "" {
-	    log.Infof("Overriding DNS addressw with %s", *dnsAddr)
-	    server.ForwardDns = []string{*dnsAddr}
+	if *dnsAddrFlag != "" {
+	    log.Infof("Overriding DNS addressw with %s", *dnsAddrFlag)
+	    server.ForwardDns = []string{*dnsAddrFlag}
 	}
 
 	if err := server.Serve(); err != nil {
