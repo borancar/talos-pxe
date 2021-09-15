@@ -415,7 +415,7 @@ func (s *Server) ipxeWrapperMenuHandler(primaryHandler http.Handler) http.Handle
 			remoteIp := net.ParseIP(req.Form.Get("ip"))
 			log.Infof("Selecting %s for %s", machineType, remoteIp)
 
-			if machineType == "init" || machineType == "master" {
+			if machineType == "init" || machineType == "controlplane" {
 				s.registerDNSEntry(controlplaneEndpoint, remoteIp)
 			}
 
