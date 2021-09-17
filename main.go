@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"text/template"
@@ -84,9 +86,17 @@ type Server struct {
 func (s *Server) Ipxe(classId, classInfo string) ([]byte, error) {
 	var resultBuffer bytes.Buffer
 
-	if classId == "PXEClient:Arch:00000:UNDI:002001" && classInfo == "[iPXE]" {
+	if strings.Contains(classInfo, "iPXE") {
 		ipxeMenuTemplate.Execute(&resultBuffer, s)
 		return resultBuffer.Bytes(), nil
+	}
+
+	if classId == "PXEClient:Arch:00000:UNDI:002001" || classId == "PXEClient:Arch:00007:UNDI:003001" {
+	    data, err := ioutil.ReadFile(filepath.Join(s.ServerRoot, "ipxe.efi"))
+	    if err != nil {
+		return nil, err
+	    }
+	    return data, nil
 	}
 
 	return nil, fmt.Errorf("Unknown class %s:%s", classId, classInfo)
