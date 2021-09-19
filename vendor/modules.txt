@@ -135,6 +135,10 @@ github.com/milosgajdos/tenus
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
+# github.com/pin/tftp v0.0.0-20210809155059-0161c5dd2e96
+## explicit
+github.com/pin/tftp
+github.com/pin/tftp/netascii
 # github.com/poseidon/matchbox v0.9.0
 ## explicit
 github.com/poseidon/matchbox/matchbox/http
@@ -175,8 +179,6 @@ github.com/vincent-petithory/dataurl
 github.com/willf/bitset
 # go.universe.tf/netboot v0.0.0-20210617221821-fc2840fa7b05
 ## explicit
-go.universe.tf/netboot/dhcp4
-go.universe.tf/netboot/tftp
 # go4.org v0.0.0-20160314031811-03efcb870d84
 go4.org/errorutil
 # golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2

@@ -19,18 +19,44 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"strings"
 
-	"go.universe.tf/netboot/tftp"
+	tftp "github.com/pin/tftp"
 )
 
-func (s *Server) serveTFTP(l net.PacketConn) error {
-	ts := tftp.Server{
-		Handler:     s.handleTFTP,
-		TransferLog: s.logTFTPTransfer,
+type TFTPHook struct {
+}
+
+func (h *TFTPHook) OnSuccess(stats tftp.TransferStats) {
+	log.Infof("Transferred %s to %s", stats.Filename, stats.RemoteAddr)
+}
+
+func (h *TFTPHook) OnFailure(stats tftp.TransferStats, err error) {
+	log.Errorf("Failure transferring %s to %s: %s", stats.Filename, stats.RemoteAddr, err)
+}
+
+// readHandler is called when client starts file download from server
+func (s *Server) readHandler(path string, rf io.ReaderFrom) error {
+	_, classId, classInfo, err := extractInfo(path)
+	if err != nil {
+		return fmt.Errorf("unknown path %q", path)
 	}
+
+	bs, err := s.Ipxe(classId, classInfo)
+	if err != nil {
+		return err
+	}
+
+	rf.(tftp.OutgoingTransfer).SetSize(int64(len(bs)))
+	rf.ReadFrom(bytes.NewBuffer(bs))
+
+	return nil
+}
+
+func (s *Server) serveTFTP(l net.PacketConn) error {
+	ts := tftp.NewServer(s.readHandler, nil)
+	ts.SetHook(&TFTPHook{})
 	err := ts.Serve(l)
 	if err != nil {
 		return fmt.Errorf("TFTP server shut down: %s", err)
@@ -55,29 +81,6 @@ func extractInfo(path string) (net.HardwareAddr, string, string, error) {
 	return mac, classId, classInfo, nil
 }
 
-func (s *Server) logTFTPTransfer(clientAddr net.Addr, path string, err error) {
-	_, _, _, pathErr := extractInfo(path)
-	if pathErr != nil {
-		log.Errorf("unable to extract mac from request:%v", pathErr)
-		return
-	}
-	if err != nil {
-		log.Errorf("Send of %q to %s failed: %s", path, clientAddr, err)
-	} else {
-		log.Infof("Sent %q to %s", path, clientAddr)
-	}
-}
-
-func (s *Server) handleTFTP(path string, clientAddr net.Addr) (io.ReadCloser, int64, error) {
-	_, classId, classInfo, err := extractInfo(path)
-	if err != nil {
-		return nil, 0, fmt.Errorf("unknown path %q", path)
-	}
-
-	bs, err := s.Ipxe(classId, classInfo)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return ioutil.NopCloser(bytes.NewBuffer(bs)), int64(len(bs)), nil
+func (s *Server) logInfo(msg string) {
+	log.Info(msg)
 }
