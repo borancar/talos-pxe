@@ -19,7 +19,6 @@ import (
 	"net"
 	"time"
 
-	"go.universe.tf/netboot/dhcp4"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/server4"
 	"github.com/insomniacslk/dhcp/iana"
@@ -112,19 +111,15 @@ func (s *Server) handlerDHCP4() server4.Handler {
 				resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, m.Options[dhcpv4.OptionClientMachineIdentifier.Code()]))
 			}
 
+			// Some EFI firmwares refuse to boot if PXE Boot Server Discovery Control is set, so
+			// only set it if not on EFI
 			if !efi {
-				// Some EFI firmwares refuse to boot if PXE Boot Server Discovery Control is set
-				pxe := dhcp4.Options{
+				pxe := []byte{
 					// PXE Boot Server Discovery Control - bypass, just boot from filename.
-					6: []byte{8},
-				}
-				bs, err := pxe.Marshal()
-				if err != nil {
-					log.Error(err)
-					return
+					6, 1, 8, byte(dhcpv4.OptionEnd),
 				}
 
-				resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, bs))
+				resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, pxe))
 			}
 		}
 
@@ -160,7 +155,7 @@ func (s *Server) handlerDHCP4() server4.Handler {
 			return
 		}
 
-		log.Debugf(resp.Summary())
+		log.Debug(resp.Summary())
 		_, err = conn.WriteTo(resp.ToBytes(), peer)
 		if err != nil {
 			log.Printf("failure sending response: %s", err)
