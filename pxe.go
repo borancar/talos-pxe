@@ -15,75 +15,12 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"net"
 
-	"go.universe.tf/netboot/dhcp4"
+	"github.com/insomniacslk/dhcp/dhcpv4"
 	"golang.org/x/net/ipv4"
 )
-
-// Firmware describes a kind of firmware attempting to boot.
-//
-// This should only be used for selecting the right bootloader within
-// Pixiecore, kernel selection should key off the more generic
-// Architecture.
-type Firmware int
-
-// The bootloaders that Pixiecore knows how to handle.
-const (
-	FirmwareX86PC         Firmware = iota // "Classic" x86 BIOS with PXE/UNDI support
-	FirmwareEFI32                         // 32-bit x86 processor running EFI
-	FirmwareEFI64                         // 64-bit x86 processor running EFI
-	FirmwareEFIBC                         // 64-bit x86 processor running EFI
-	FirmwareX86Ipxe                       // "Classic" x86 BIOS running iPXE (no UNDI support)
-	FirmwarePixiecoreIpxe                 // Pixiecore's iPXE, which has replaced the underlying firmware
-)
-
-func (s *Server) isBootDHCP(pkt *dhcp4.Packet) error {
-	if pkt.Type != dhcp4.MsgDiscover {
-		return fmt.Errorf("packet is %s, not %s", pkt.Type, dhcp4.MsgDiscover)
-	}
-
-	if pkt.Options[93] == nil {
-		return errors.New("not a PXE boot request (missing option 93)")
-	}
-
-	return nil
-}
-
-func interfaceIP(intf *net.Interface) (net.IP, error) {
-	addrs, err := intf.Addrs()
-	if err != nil {
-		return nil, err
-	}
-
-	// Try to find an IPv4 address to use, in the following order:
-	// global unicast (includes rfc1918), link-local unicast,
-	// loopback.
-	fs := [](func(net.IP) bool){
-		net.IP.IsGlobalUnicast,
-		net.IP.IsLinkLocalUnicast,
-		net.IP.IsLoopback,
-	}
-	for _, f := range fs {
-		for _, a := range addrs {
-			ipaddr, ok := a.(*net.IPNet)
-			if !ok {
-				continue
-			}
-			ip := ipaddr.IP.To4()
-			if ip == nil {
-				continue
-			}
-			if f(ip) {
-				return ip, nil
-			}
-		}
-	}
-
-	return nil, errors.New("no usable unicast address configured on interface")
-}
 
 // TODO: this may actually be the BINL protocol, a
 // Microsoft-proprietary fork of PXE that is more universally
@@ -104,108 +41,36 @@ func (s *Server) servePXE(conn net.PacketConn) error {
 			return fmt.Errorf("Receiving packet: %s", err)
 		}
 
-		log.Debug("Received PXE request")
+		log.Infof("Received proxyDHCP PXE request from %s", addr)
 
-		pkt, err := dhcp4.Unmarshal(buf[:n])
+		m, err := dhcpv4.FromBytes(buf[:n])
 		if err != nil {
 			log.Debugf("Packet from %s is not a DHCP packet: %s", addr, err)
 			continue
 		}
 
-		if err = s.isBootDHCP(pkt); err != nil {
-			log.Debugf("Ignoring packet from %s (%s): %s", pkt.HardwareAddr, addr, err)
-		}
-		fwtype, err := s.validatePXE(pkt)
-		if err != nil {
-			log.Errorf("Unusable packet from %s (%s): %s", pkt.HardwareAddr, addr, err)
+		if m.OpCode != dhcpv4.OpcodeBootRequest || !m.IsOptionRequested(dhcpv4.OptionBootfileName) {
+			log.Debugf("Ignoring packet from %s (%s): %s", m.ClientHWAddr, addr, err)
 			continue
 		}
 
-		intf, err := net.InterfaceByIndex(msg.IfIndex)
-		if err != nil {
-			log.Errorf("Couldn't get information about local network interface %d: %s", msg.IfIndex, err)
-			continue
+		resp, err := dhcpv4.NewReplyFromRequest(m,
+			dhcpv4.WithOption(dhcpv4.OptMessageType(dhcpv4.MessageTypeAck)),
+			dhcpv4.WithOption(dhcpv4.OptBootFileName(fmt.Sprintf("%s/%s/%s", m.ClientHWAddr, m.ClassIdentifier(), m.UserClass()))),
+			dhcpv4.WithOption(dhcpv4.OptServerIdentifier(s.IP)),
+			dhcpv4.WithOption(dhcpv4.OptGeneric(dhcpv4.OptionClassIdentifier, []byte("PXEClient"))),
+		)
+		resp.ServerIPAddr = s.IP
+
+		if m.Options[dhcpv4.OptionClientMachineIdentifier.Code()] != nil {
+			resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, m.Options[dhcpv4.OptionClientMachineIdentifier.Code()]))
 		}
 
-		serverIP, err := interfaceIP(intf)
-		if err != nil {
-			log.Errorf("Want to boot %s (%s) on %s, but couldn't get a source address: %s", pkt.HardwareAddr, addr, intf.Name, err)
-			continue
-		}
-
-		resp, err := s.offerPXE(pkt, serverIP, fwtype)
-		if err != nil {
-			log.Errorf("Failed to construct PXE offer for %s (%s): %s", pkt.HardwareAddr, addr, err)
-			continue
-		}
-
-		bs, err := resp.Marshal()
-		if err != nil {
-			log.Errorf("Failed to marshal PXE offer for %s (%s): %s", pkt.HardwareAddr, addr, err)
-			continue
-		}
-
-		if _, err := l.WriteTo(bs, &ipv4.ControlMessage{
+		log.Debug(resp.Summary())
+		if _, err := l.WriteTo(resp.ToBytes(), &ipv4.ControlMessage{
 			IfIndex: msg.IfIndex,
 		}, addr); err != nil {
-			log.Errorf("Failed to send PXE response to %s (%s): %s", pkt.HardwareAddr, addr, err)
+			log.Errorf("Failed to send PXE response to %s (%s): %s", m.ClientHWAddr, addr, err)
 		}
 	}
-}
-
-func (s *Server) validatePXE(pkt *dhcp4.Packet) (fwtype Firmware, err error) {
-	fwt, err := pkt.Options.Uint16(93)
-	if err != nil {
-		return 0, fmt.Errorf("malformed DHCP option 93 (required for PXE): %s", err)
-	}
-	switch fwt {
-	case 6:
-		fwtype = FirmwareEFI32
-	case 7:
-		fwtype = FirmwareEFI64
-	case 9:
-		fwtype = FirmwareEFIBC
-	default:
-		return 0, fmt.Errorf("unsupported client firmware type '%d' (please file a bug!)", fwt)
-	}
-	//if s.Ipxe[fwtype] == nil {
-	//	return 0, fmt.Errorf("unsupported client firmware type '%d' (please file a bug!)", fwtype)
-	//}
-
-	guid := pkt.Options[97]
-	switch len(guid) {
-	case 0:
-		// Accept missing GUIDs even though it's a spec violation,
-		// same as in dhcp.go.
-	case 17:
-		if guid[0] != 0 {
-			return 0, errors.New("malformed client GUID (option 97), leading byte must be zero")
-		}
-	default:
-		return 0, errors.New("malformed client GUID (option 97), wrong size")
-	}
-
-	return fwtype, nil
-}
-
-func (s *Server) offerPXE(pkt *dhcp4.Packet, serverIP net.IP, fwtype Firmware) (resp *dhcp4.Packet, err error) {
-	resp = &dhcp4.Packet{
-		Type:           dhcp4.MsgAck,
-		TransactionID:  pkt.TransactionID,
-		HardwareAddr:   pkt.HardwareAddr,
-		ClientAddr:     pkt.ClientAddr,
-		RelayAddr:      pkt.RelayAddr,
-		ServerAddr:     serverIP,
-		BootServerName: serverIP.String(),
-		BootFilename:   fmt.Sprintf("%s/%d", pkt.HardwareAddr, fwtype),
-		Options: dhcp4.Options{
-			dhcp4.OptServerIdentifier: serverIP,
-			dhcp4.OptVendorIdentifier: []byte("PXEClient"),
-		},
-	}
-	if pkt.Options[97] != nil {
-		resp.Options[97] = pkt.Options[97]
-	}
-
-	return resp, nil
 }
