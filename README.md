@@ -4,7 +4,6 @@ Talos PXE is a project aimed at boostrapping an initial Talos cluster from a sin
 
 ![iPXE Talos menu screenshot](screenshot.png)
 
-
 ## Requirements
 
 - Docker
@@ -30,11 +29,13 @@ sed 's/type: controlplane/type: init/' assets/controlplane.yaml > assets/init.ya
 First step is building the pxe network container via:
 
 ```
-docker build -t pxe .
+docker build -t talos-pxe .
 ```
 
 then that container can be converted into a bootable VM via LinuxKit:
 
 ```
 linuxkit build -docker -format iso-bios linux.yml
+
+(if you get a VFS error booting this image, you may need to try other formats like `raw-bios` or `raw-efi`)
 ```
