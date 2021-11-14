@@ -9,7 +9,6 @@ COPY dhcp.go .
 COPY tftp.go .
 COPY pxe.go .
 COPY tftp.go .
-COPY logging.go .
 COPY dns.go .
 COPY vendor vendor
 
