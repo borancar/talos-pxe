@@ -22,8 +22,8 @@ func TestTFTPHook(t *testing.T) {
 	}
 	tHook.OnSuccess(stats)
 	tHook.OnFailure(stats, errors.New("boom"))
-	capture.RequireInLog(t, "foo")
-
+	capture.RequireInLog(t, "Transferred foo to 1.2.3.4")
+	capture.RequireInLog(t, "Failure transferring foo to 1.2.3.4: boom")
 }
 
 type LogCapture struct {

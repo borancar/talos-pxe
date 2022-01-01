@@ -13,6 +13,7 @@ COPY dns.go .
 COPY vendor vendor
 
 RUN go install
+RUN echo 'alias ll="ls -lah --color"' >> /root/.bashrc
 
 FROM build as unittest
 
