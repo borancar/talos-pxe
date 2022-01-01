@@ -28,6 +28,8 @@ import (
 // TianoCore EDK2 source code to figure out if what this is doing is
 // actually BINL, and if so rename everything.
 
+// TODO test it, to unit test it i need examples of binary representation of some pxe requests
+
 func (s *Server) servePXE(conn net.PacketConn) error {
 	buf := make([]byte, 1024)
 	l := ipv4.NewPacketConn(conn)

@@ -1,32 +1,29 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"text/template"
 	"time"
 
-	"github.com/sirupsen/logrus"
-	flag "github.com/spf13/pflag"
+	"github.com/coredhcp/coredhcp/plugins/allocators"
+	"github.com/coredhcp/coredhcp/plugins/allocators/bitmap"
 	"github.com/digineo/go-dhclient"
 	"github.com/google/gopacket/layers"
 	"github.com/milosgajdos/tenus"
 	web "github.com/poseidon/matchbox/matchbox/http"
-	"github.com/poseidon/matchbox/matchbox/server"
+	matchboxServer "github.com/poseidon/matchbox/matchbox/server"
 	"github.com/poseidon/matchbox/matchbox/storage"
-        "github.com/coredhcp/coredhcp/plugins/allocators"
-        "github.com/coredhcp/coredhcp/plugins/allocators/bitmap"
+	"github.com/sirupsen/logrus"
+	flag "github.com/spf13/pflag"
 )
 
 var log = logrus.New()
@@ -41,7 +38,7 @@ const (
 )
 
 type DHCPRecord struct {
-	IP net.IP
+	IP      net.IP
 	expires time.Time
 }
 
@@ -49,7 +46,7 @@ type DHCPRecord struct {
 type Server struct {
 	ServerRoot string
 
-	IP net.IP
+	IP   net.IP
 	GWIP net.IP
 
 	Net *net.IPNet
@@ -62,14 +59,14 @@ type Server struct {
 
 	ProxyDHCP bool
 
-	DHCPLock sync.Mutex
-	DHCPRecords map[string]*DHCPRecord
+	DHCPLock      sync.Mutex
+	DHCPRecords   map[string]*DHCPRecord
 	DHCPAllocator allocators.Allocator
 
-	DNSRWLock sync.RWMutex
+	DNSRWLock    sync.RWMutex
 	DNSRecordsv4 map[string][]net.IP
 	DNSRecordsv6 map[string][]net.IP
-	DNSRRecords map[string][]string
+	DNSRRecords  map[string][]string
 
 	// These ports can technically be set for testing, but the
 	// protocols burned in firmware on the client side hardcode these,
@@ -81,25 +78,6 @@ type Server struct {
 	DNSPort  int
 
 	errs chan error
-}
-
-func (s *Server) Ipxe(classId, classInfo string) ([]byte, error) {
-	var resultBuffer bytes.Buffer
-
-	if strings.Contains(classInfo, "iPXE") {
-		ipxeMenuTemplate.Execute(&resultBuffer, s)
-		return resultBuffer.Bytes(), nil
-	}
-
-	if classId == "PXEClient:Arch:00000:UNDI:002001" || classId == "PXEClient:Arch:00007:UNDI:003001" {
-	    data, err := ioutil.ReadFile(filepath.Join(s.ServerRoot, "ipxe.efi"))
-	    if err != nil {
-		return nil, err
-	    }
-	    return data, nil
-	}
-
-	return nil, fmt.Errorf("Unknown class %s:%s", classId, classInfo)
 }
 
 // Serve listens for machines attempting to boot, and uses Booter to
@@ -177,13 +155,13 @@ func (s *Server) startMatchbox(l net.Listener) error {
 		Root: s.ServerRoot,
 	})
 
-	server := server.NewServer(&server.Config{
+	server := matchboxServer.NewServer(&matchboxServer.Config{
 		Store: store,
 	})
 
 	config := &web.Config{
-		Core: server,
-		Logger: log,
+		Core:       server,
+		Logger:     log,
 		AssetsPath: filepath.Join(s.ServerRoot, "assets"),
 	}
 
@@ -267,15 +245,15 @@ func getInterface(addr net.IP) (*net.Interface, net.IPMask, error) {
 
 		for _, ifaceAddr := range ifaceAddrs {
 			switch v := ifaceAddr.(type) {
-				case *net.IPAddr:
-					if v.IP.Equal(addr) {
-						return &iface, v.IP.DefaultMask(), nil
-					}
+			case *net.IPAddr:
+				if v.IP.Equal(addr) {
+					return &iface, v.IP.DefaultMask(), nil
+				}
 
-				case *net.IPNet:
-					if v.IP.Equal(addr) {
-						return &iface, v.Mask, nil
-					}
+			case *net.IPNet:
+				if v.IP.Equal(addr) {
+					return &iface, v.Mask, nil
+				}
 			}
 		}
 	}
@@ -292,11 +270,11 @@ func getValidInterfaces() ([]net.Interface, error) {
 	var validInterfaces []net.Interface
 
 	for _, iface := range ifaces {
-		if iface.Flags & net.FlagLoopback != 0 {
+		if iface.Flags&net.FlagLoopback != 0 {
 			continue
 		}
 
-		if iface.Flags & net.FlagUp == 0 {
+		if iface.Flags&net.FlagUp == 0 {
 			continue
 		}
 
@@ -340,6 +318,7 @@ func runDhclient(ctx context.Context, iface *net.Interface) (*dhclient.Lease, er
 	}
 }
 
+// ipxeWrapperMenuHandler
 func (s *Server) ipxeWrapperMenuHandler(primaryHandler http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path != "ipxe" && req.URL.Path != "/ipxe" {
@@ -350,8 +329,11 @@ func (s *Server) ipxeWrapperMenuHandler(primaryHandler http.Handler) http.Handle
 		rr := httptest.NewRecorder()
 		primaryHandler.ServeHTTP(rr, req)
 
-		if status := rr.Code; status == http.StatusOK {
-			req.ParseForm()
+		if rr.Code != http.StatusOK {
+			if err := req.ParseForm(); err != nil {
+				log.Errorf("Error ParseForm: %v", err)
+				return
+			}
 			machineType := req.Form.Get("type")
 			remoteIp := net.ParseIP(req.Form.Get("ip"))
 			log.Infof("Selecting %s for %s", machineType, remoteIp)
@@ -368,7 +350,9 @@ func (s *Server) ipxeWrapperMenuHandler(primaryHandler http.Handler) http.Handle
 
 			w.WriteHeader(rr.Code)
 
-			w.Write(rr.Body.Bytes())
+			if _, err := w.Write(rr.Body.Bytes()); err != nil {
+				log.Errorf("Error wrtiting body bytes %v", err)
+			}
 		} else {
 			log.Info("Serving menu")
 
@@ -383,25 +367,25 @@ func (s *Server) ipxeWrapperMenuHandler(primaryHandler http.Handler) http.Handle
 }
 
 func getAvailableRange(netIp net.IPNet, netServer net.IP) (net.IP, net.IP) {
-    mask := binary.BigEndian.Uint32(netIp.Mask)
-    start := binary.BigEndian.Uint32(netServer.To4())
+	mask := binary.BigEndian.Uint32(netIp.Mask)
+	start := binary.BigEndian.Uint32(netServer.To4())
 
-    first := start + 1
-    last := ((start & mask) | (mask ^ 0xffffffff)) - 1
+	first := start + 1
+	last := ((start & mask) | (mask ^ 0xffffffff)) - 1
 
-    firstIp := make(net.IP, 4)
-    lastIp := make(net.IP, 4)
+	firstIp := make(net.IP, 4)
+	lastIp := make(net.IP, 4)
 
-    binary.BigEndian.PutUint32(firstIp, first)
-    binary.BigEndian.PutUint32(lastIp, last)
+	binary.BigEndian.PutUint32(firstIp, first)
+	binary.BigEndian.PutUint32(lastIp, last)
 
-    return firstIp, lastIp
+	return firstIp, lastIp
 }
 
 func main() {
 	serverRootFlag := flag.String("root", ".", "Server root, where to serve the files from")
 	ifNameFlag := flag.String("if", "eth0", "Interface to use")
-	ipAddrFlag := flag.String("addr", "192.168.123.1/24", "Address to listen on")
+	ipAddrFlag := flag.String("addr", "192.168.123.1/24", "Cidr to use in case if there is not DHCP server present in the network")
 	gwAddrFlag := flag.String("gw", "", "Override gateway address")
 	dnsAddrFlag := flag.String("dns", "", "Override DNS address")
 	controlplaneFlag := flag.String("controlplane", "controlplane.talos.", "Controlplane address")
@@ -430,27 +414,26 @@ func main() {
 
 	log.Infof("Brought %s up\n", eth.NetInterface().Name)
 
-	lease, err := runDhclient(context.Background(), eth.NetInterface())
-
 	server := &Server{
-		ServerRoot: *serverRootFlag,
-		Intf: eth.NetInterface().Name,
+		ServerRoot:   *serverRootFlag,
+		Intf:         eth.NetInterface().Name,
 		Controlplane: *controlplaneFlag,
-		DHCPRecords: make(map[string]*DHCPRecord),
+		DHCPRecords:  make(map[string]*DHCPRecord),
 		DNSRecordsv4: make(map[string][]net.IP),
 		DNSRecordsv6: make(map[string][]net.IP),
-		DNSRRecords: make(map[string][]string),
+		DNSRRecords:  make(map[string][]string),
 	}
 
+	lease, err := runDhclient(context.Background(), eth.NetInterface())
 	if lease != nil {
 		log.Infof("Obtained address %s\n", lease.FixedAddress)
 
-		net := &net.IPNet{
-			IP: lease.FixedAddress,
+		ipNet := &net.IPNet{
+			IP:   lease.FixedAddress,
 			Mask: lease.Netmask,
 		}
 
-		if err := eth.SetLinkIp(net.IP, net); err != nil && err != syscall.EEXIST {
+		if err := eth.SetLinkIp(ipNet.IP, ipNet); err != nil && err != syscall.EEXIST {
 			log.Panic(err)
 		}
 
@@ -469,6 +452,7 @@ func main() {
 		server.IP = lease.FixedAddress
 		server.ProxyDHCP = true
 	} else {
+		// If lese is nil we assume that there is no DHCP server present in the network, so we are going to server it
 		netIp, netNet, err := net.ParseCIDR(*ipAddrFlag)
 		firstIp, lastIp := getAvailableRange(*netNet, netIp)
 		log.Infof("Setting manual address %s, leasing out subnet %s (available range %s - %s)\n", netIp, netNet, firstIp, lastIp)
@@ -482,25 +466,21 @@ func main() {
 			log.Panic(err)
 		}
 
-		if err != nil {
-			log.Panic(err)
-		}
-
 		if err := eth.SetLinkIp(netIp, netNet); err != nil && err != syscall.EEXIST {
 			log.Panic(err)
 		}
 	}
 
 	if *gwAddrFlag != "" {
-	    log.Infof("Overriding gateway address with %s", *gwAddrFlag)
-	    server.GWIP = net.ParseIP(*gwAddrFlag)
+		log.Infof("Overriding gateway address with %s", *gwAddrFlag)
+		server.GWIP = net.ParseIP(*gwAddrFlag)
 	} else {
-	    server.GWIP = server.IP
+		server.GWIP = server.IP
 	}
 
 	if *dnsAddrFlag != "" {
-	    log.Infof("Overriding DNS addressw with %s", *dnsAddrFlag)
-	    server.ForwardDns = []string{*dnsAddrFlag}
+		log.Infof("Overriding DNS addressw with %s", *dnsAddrFlag)
+		server.ForwardDns = []string{*dnsAddrFlag}
 	}
 
 	if err := server.Serve(); err != nil {
