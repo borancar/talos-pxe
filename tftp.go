@@ -42,14 +42,14 @@ func (h *TFTPHook) OnFailure(stats tftp.TransferStats, err error) {
 	log.Errorf("Failure transferring %s to %s: %s", stats.Filename, stats.RemoteAddr, err)
 }
 
-// readHandler is called when client starts file download from server
-func (s *Server) readHandler(path string, rf io.ReaderFrom) error {
+// readHandlerTFTP is called when client starts file download from server
+func (s *Server) readHandlerTFTP(path string, rf io.ReaderFrom) error {
 	_, classId, classInfo, err := extractInfo(path)
 	if err != nil {
 		return fmt.Errorf("unknown path %q", path)
 	}
 
-	bs, err := s.serveIpxeContent(classId, classInfo)
+	bs, err := s.prepIpxeContent(classId, classInfo)
 	if err != nil {
 		return err
 	}
@@ -60,8 +60,8 @@ func (s *Server) readHandler(path string, rf io.ReaderFrom) error {
 	return nil
 }
 
-// serveIpxeContent serves ipxe menu or the ipxe.efi file
-func (s *Server) serveIpxeContent(classId, classInfo string) ([]byte, error) {
+// prepIpxeContent serves ipxe menu or the ipxe.efi file
+func (s *Server) prepIpxeContent(classId, classInfo string) ([]byte, error) {
 
 	if strings.Contains(classInfo, "iPXE") {
 		var menuBuffer bytes.Buffer
@@ -81,7 +81,7 @@ func (s *Server) serveIpxeContent(classId, classInfo string) ([]byte, error) {
 }
 
 func (s *Server) serveTFTP(l net.PacketConn) error {
-	ts := tftp.NewServer(s.readHandler, nil)
+	ts := tftp.NewServer(s.readHandlerTFTP, nil)
 	ts.SetHook(&TFTPHook{})
 	err := ts.Serve(l)
 	if err != nil {

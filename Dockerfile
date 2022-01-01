@@ -14,7 +14,13 @@ COPY vendor vendor
 
 RUN go install
 
-FROM debian:buster-slim
+FROM build as unittest
+
+COPY *_test.go .
+COPY Makefile .
+ENTRYPOINT ["make", "unittest-local"]
+
+FROM debian:buster-slim as talos-pxe
 
 COPY --from=build /go/bin/talos-pxe /go/bin/talos-pxe
 COPY undionly.kpxe /srv/tftp/

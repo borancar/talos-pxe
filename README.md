@@ -29,7 +29,7 @@ sed 's/type: controlplane/type: init/' assets/controlplane.yaml > assets/init.ya
 First step is building the pxe network container via:
 
 ```
-docker build -t talos-pxe .
+docker build -t talos-pxe --target talos-pxe .
 ```
 
 then that container can be converted into a bootable VM via LinuxKit:
