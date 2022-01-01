@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/pin/tftp"
-	"github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"net"
 	"os"
@@ -14,6 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pin/tftp"
+	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -90,7 +91,7 @@ func TestServeTFTP(t *testing.T) {
 	for _, option := range []string{
 		"not a mac address/PXEClient:Arch:00000:UNDI:002001/what",
 		"98:01:a7:99:ac:6b/unknown class/what",
-		"98:01:a7:99:ac:6b/not enough of path element"} {
+		"98:01:a7:99:ac:6b/not enough of path elements"} {
 		_, err := c.Receive(option, "octet")
 		require.NotNil(t, err)
 
