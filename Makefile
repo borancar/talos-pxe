@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := all
 DOCKER := docker
-TAG ?= dev-build
+TAG ?= $(shell cat VERSION)
 PACKAGE ?= talos-pxe
 
 .PHONY: unittest-local unittest

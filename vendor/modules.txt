@@ -84,6 +84,8 @@ github.com/coreos/ignition/config/validate/astnode
 github.com/coreos/ignition/config/validate/report
 # github.com/coreos/yaml v0.0.0-20141224210557-6b16a5714269
 github.com/coreos/yaml
+# github.com/davecgh/go-spew v1.1.1
+github.com/davecgh/go-spew/spew
 # github.com/digineo/go-dhclient v1.0.2
 ## explicit
 github.com/digineo/go-dhclient
@@ -139,6 +141,8 @@ github.com/opentracing/opentracing-go/log
 ## explicit
 github.com/pin/tftp
 github.com/pin/tftp/netascii
+# github.com/pmezard/go-difflib v1.0.0
+github.com/pmezard/go-difflib/difflib
 # github.com/poseidon/matchbox v0.9.0
 ## explicit
 github.com/poseidon/matchbox/matchbox/http
@@ -169,6 +173,10 @@ github.com/sirupsen/logrus
 # github.com/spf13/pflag v1.0.6-0.20201009195203-85dd5c8bc61c
 ## explicit
 github.com/spf13/pflag
+# github.com/stretchr/testify v1.7.0
+## explicit
+github.com/stretchr/testify/assert
+github.com/stretchr/testify/require
 # github.com/u-root/uio v0.0.0-20210528114334-82958018845c
 github.com/u-root/uio/rand
 github.com/u-root/uio/ubinary
@@ -177,8 +185,6 @@ github.com/u-root/uio/uio
 github.com/vincent-petithory/dataurl
 # github.com/willf/bitset v1.1.11
 github.com/willf/bitset
-# go.universe.tf/netboot v0.0.0-20210617221821-fc2840fa7b05
-## explicit
 # go4.org v0.0.0-20160314031811-03efcb870d84
 go4.org/errorutil
 # golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
@@ -294,3 +300,5 @@ google.golang.org/protobuf/types/descriptorpb
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/timestamppb
+# gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+gopkg.in/yaml.v3
