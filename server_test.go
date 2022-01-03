@@ -10,7 +10,7 @@ import (
 )
 
 func TestServer(t *testing.T) {
-	s, cleanup := talosPxeServerForTest(t, true)
+	s, cleanup := talosPxeServerForTest(t, false)
 	defer cleanup()
 
 	var err error
