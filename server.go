@@ -3,9 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	web "github.com/poseidon/matchbox/matchbox/http"
-	matchboxServer "github.com/poseidon/matchbox/matchbox/server"
-	"github.com/poseidon/matchbox/matchbox/storage"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +14,9 @@ import (
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/insomniacslk/dhcp/dhcpv4/server4"
 	"github.com/pin/tftp"
+	web "github.com/poseidon/matchbox/matchbox/http"
+	matchboxServer "github.com/poseidon/matchbox/matchbox/server"
+	"github.com/poseidon/matchbox/matchbox/storage"
 )
 
 type DHCPRecord struct {
@@ -119,8 +119,8 @@ func (s *Server) Serve() error {
 	go func() { s.errs <- s.servePXE(cPxe) }()
 	go func() { s.errs <- s.serveTFTP(cTftp) }()
 	go func() { s.errs <- s.startMatchbox(cHttp) }()
-	go func() { s.errs <- s.startDHCP() }()
 	go func() { s.errs <- s.serveDNS(cDns) }()
+	go func() { s.errs <- s.startDHCP() }()
 
 	// Wait for either a fatal error, or Shutdown().
 	err = <-s.errs

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"os"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/coredhcp/coredhcp/plugins/allocators/bitmap"
 	"github.com/digineo/go-dhclient"
-	"github.com/google/gopacket/layers"
 	"github.com/milosgajdos/tenus"
 	"github.com/sirupsen/logrus"
 	flag "github.com/spf13/pflag"
@@ -101,7 +99,7 @@ func main() {
 
 	var server *Server
 
-	lease, err := runDhclient(context.Background(), eth.NetInterface())
+	lease, err := getDHCPlease(eth.NetInterface(), time.Second*10)
 	if lease != nil {
 		log.Infof("Obtained address %s\n", lease.FixedAddress)
 
@@ -174,33 +172,26 @@ func main() {
 	}
 }
 
-func runDhclient(ctx context.Context, iface *net.Interface) (*dhclient.Lease, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
+func getDHCPlease(iface *net.Interface, timeout time.Duration) (*dhclient.Lease, error) {
 	leaseCh := make(chan *dhclient.Lease)
+	hostname, _ := os.Hostname()
 	client := dhclient.Client{
-		Iface: iface,
+		Iface:    iface,
+		Hostname: hostname,
 		OnBound: func(lease *dhclient.Lease) {
 			leaseCh <- lease
 		},
 	}
 
-	for _, param := range dhclient.DefaultParamsRequestList {
-		client.AddParamRequest(param)
-	}
-
-	hostname, _ := os.Hostname()
-	client.AddOption(layers.DHCPOptHostname, []byte(hostname))
-
+	// Start will configure all DefaultParamsRequestList and the host name
 	client.Start()
 	defer client.Stop()
 
 	select {
 	case lease := <-leaseCh:
 		return lease, nil
-	case <-ctx.Done():
-		return nil, fmt.Errorf("Could not get DHCP")
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("Could not get DHCP due to timeout of %v ", timeout)
 	}
 }
 
