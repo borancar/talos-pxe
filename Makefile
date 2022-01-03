@@ -1,3 +1,4 @@
+SHELL := /bin/bash
 .DEFAULT_GOAL := all
 DOCKER := docker
 TAG ?= $(shell cat VERSION)
@@ -10,7 +11,8 @@ TEST_PATTERN ?= "TestLogInfo"
 build-unittest:
 	$(DOCKER) build -t talos-pxe:unittest-${PACKAGE}-${TAG} --target unittest .
 unittest-local:
-	go test -cover -v ./... -coverprofile=out/coverage.out 2>&1 | tee out/unittest.out
+    # we want the test output in file by tee but also the exit status to fail on test failure hence the set -o pipefail
+	set -o pipefail; go test -cover -v ./... -coverprofile=out/coverage.out 2>&1 | tee out/unittest.out
 	go tool cover -html=out/coverage.out -o out/coverage.html
 unittest: build-unittest
 	$(DOCKER) run -t -v ${PWD}:/go/src/github.com/borancar/talos-pxe \
