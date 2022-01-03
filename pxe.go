@@ -37,7 +37,14 @@ func (s *Server) servePXE(conn net.PacketConn) error {
 		return fmt.Errorf("Couldn't get interface metadata on PXE port: %s", err)
 	}
 
-	for !s.closed {
+	for {
+		select {
+		case <-s.closeServers:
+			log.Info("PXE server stopping")
+			return nil
+		default:
+			// continue
+		}
 		n, msg, addr, err := l.ReadFrom(buf)
 		if err != nil {
 			return fmt.Errorf("Receiving packet: %s", err)
@@ -75,5 +82,4 @@ func (s *Server) servePXE(conn net.PacketConn) error {
 			log.Errorf("Failed to send PXE response to %s (%s): %s", m.ClientHWAddr, addr, err)
 		}
 	}
-	return nil
 }

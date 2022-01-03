@@ -10,6 +10,7 @@ COPY tftp.go .
 COPY pxe.go .
 COPY tftp.go .
 COPY dns.go .
+COPY server.go .
 COPY vendor vendor
 
 RUN go install

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -173,11 +174,19 @@ func (s *Server) startMatchbox(l net.Listener) error {
 
 // Shutdown causes Serve() to exit, cleaning up behind itself.
 func (s *Server) Shutdown() {
-	//if s.closed {
-	//	return
-	//}
-	//
-	//s.closed = true
+	close(s.closeServers)
+	if err := s.serverDHCP.Close(); err != nil {
+		log.Warnf("Error closing DHCP server: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	if err := s.serverHttp.Shutdown(ctx); err != nil {
+		log.Warnf("Error closing HTTP server: %v", err)
+	}
+	s.serverTFTP.Shutdown()
+	if err := s.serverDNS.Stop(); err != nil {
+		log.Warnf("Error closing DNS server: %v", err)
+	}
 	select {
 	case s.errs <- nil:
 	default:
