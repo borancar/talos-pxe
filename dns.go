@@ -18,11 +18,11 @@ const (
 	DNSTTL = 60
 )
 
-type ServiceLookupPlugin struct{
-	Next plugin.Handler
-	Fall fall.F
+type ServiceLookupPlugin struct {
+	Next   plugin.Handler
+	Fall   fall.F
 	Server *Server
-	Zones []string
+	Zones  []string
 }
 
 func (s ServiceLookupPlugin) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
@@ -158,17 +158,17 @@ func (s *Server) serveDNS(l net.PacketConn) error {
 	zone := "talos."
 
 	zoneConfig := &dnsserver.Config{
-		Zone: zone,
-		Transport: "dns",
+		Zone:        zone,
+		Transport:   "dns",
 		ListenHosts: []string{""},
-		Port: fmt.Sprintf("%d", s.DNSPort),
-		Debug: true,
+		Port:        fmt.Sprintf("%d", s.DNSPort),
+		Debug:       true,
 	}
 
 	zoneConfig.AddPlugin(func(next plugin.Handler) plugin.Handler {
 		serviceLookup := ServiceLookupPlugin{
 			Server: s,
-			Zones: []string{zone},
+			Zones:  []string{zone},
 		}
 		serviceLookup.Next = next
 
@@ -176,11 +176,11 @@ func (s *Server) serveDNS(l net.PacketConn) error {
 	})
 
 	proxyConfig := &dnsserver.Config{
-		Zone: ".",
-		Transport: "dns",
+		Zone:        ".",
+		Transport:   "dns",
 		ListenHosts: []string{""},
-		Port: fmt.Sprintf("%d", s.DNSPort),
-		Debug: true,
+		Port:        fmt.Sprintf("%d", s.DNSPort),
+		Debug:       true,
 	}
 
 	proxyConfig.AddPlugin(func(next plugin.Handler) plugin.Handler {
@@ -197,8 +197,9 @@ func (s *Server) serveDNS(l net.PacketConn) error {
 	if err != nil {
 		return err
 	}
-	err = dnsServer.ServePacket(l)
-	if err != nil {
+	s.serverDNS = dnsServer
+
+	if err = dnsServer.ServePacket(l); err != nil {
 		return err
 	}
 

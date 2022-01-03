@@ -15,6 +15,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"time"
@@ -187,6 +188,22 @@ func (s *Server) startDhcp() error {
 	if err != nil {
 		return err
 	}
-
+	s.serverDHCP = server
 	return server.Serve()
+}
+
+func getAvailableRange(netIp net.IPNet, netServer net.IP) (net.IP, net.IP) {
+	mask := binary.BigEndian.Uint32(netIp.Mask)
+	start := binary.BigEndian.Uint32(netServer.To4())
+
+	first := start + 1
+	last := ((start & mask) | (mask ^ 0xffffffff)) - 1
+
+	firstIp := make(net.IP, 4)
+	lastIp := make(net.IP, 4)
+
+	binary.BigEndian.PutUint32(firstIp, first)
+	binary.BigEndian.PutUint32(lastIp, last)
+
+	return firstIp, lastIp
 }

@@ -83,8 +83,8 @@ func (s *Server) prepIpxeContent(classId, classInfo string) ([]byte, error) {
 func (s *Server) serveTFTP(l net.PacketConn) error {
 	ts := tftp.NewServer(s.readHandlerTFTP, nil)
 	ts.SetHook(&TFTPHook{})
-
-	if err := ts.Serve(l); err != nil {
+	s.serverTFTP = ts
+	if err := s.serverTFTP.Serve(l); err != nil {
 		return fmt.Errorf("TFTP server shut down: %s", err)
 	}
 	return nil

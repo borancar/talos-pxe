@@ -115,20 +115,21 @@ func talosPxeServerForTest(t *testing.T) (*Server, func()) {
 	ipxeFileName = "fakeIpxe"
 	_ = tmpDir.Write(ipxeFileName, "my fake fakeIpxe")
 
+	s := NewServer(tmpDir.path, "lo", defaultControlplane)
+	s.IP = net.IPv4(127, 0, 0, 1)
+	s.ServerRoot = tmpDir.path
+	s.DHCPPort = portDHCP
+	s.TFTPPort = portTFTP
+	s.PXEPort = portPXE
+	s.HTTPPort = portHTTP
+	s.DNSPort = portDNS
+
 	cleanup := func() {
 		ipxeFileName = current
 		tmpDir.Cleanup()
+		s.Shutdown()
 	}
-
-	return &Server{
-		IP:         net.IPv4(127, 0, 0, 1),
-		ServerRoot: tmpDir.path,
-		DHCPPort:   portDHCP,
-		TFTPPort:   portTFTP,
-		PXEPort:    portPXE,
-		HTTPPort:   portHTTP,
-		DNSPort:    portDNS,
-	}, cleanup
+	return s, cleanup
 }
 
 type LogCapture struct {
