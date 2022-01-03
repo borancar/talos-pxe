@@ -193,7 +193,6 @@ func (s *Server) Shutdown() {
 	if err := s.serverDHCP.Close(); err != nil {
 		log.Warnf("Error closing DHCP server: %v", err)
 	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 	if err := s.serverHTTP.Shutdown(ctx); err != nil {

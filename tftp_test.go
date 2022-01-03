@@ -75,7 +75,7 @@ func TestServeTFTP(t *testing.T) {
 		require.Equal(t, "my fake fakeIpxe", buff.String())
 	}
 
-	// Test error conditions, unknown class, wrong mack address and wrong path
+	// Test error conditions, unknown class, wrong mac address and wrong path
 	for _, option := range []string{
 		"not a mac address/PXEClient:Arch:00000:UNDI:002001/what",
 		"98:01:a7:99:ac:6b/unknown class/what",
