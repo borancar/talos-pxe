@@ -45,7 +45,7 @@ func TestServeTFTP(t *testing.T) {
 	/**
 	Test behaviour of the tftp server by running it and querying the tftp client
 	*/
-	s, cleanup := talosPxeServerForTest(t)
+	s, cleanup := talosPxeServerForTest(t, true)
 	defer cleanup()
 
 	require.NotNil(t, s)

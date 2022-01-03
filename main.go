@@ -67,36 +67,6 @@ shell
 exit
 `))
 
-func runDhclient(ctx context.Context, iface *net.Interface) (*dhclient.Lease, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	leaseCh := make(chan *dhclient.Lease)
-	client := dhclient.Client{
-		Iface: iface,
-		OnBound: func(lease *dhclient.Lease) {
-			leaseCh <- lease
-		},
-	}
-
-	for _, param := range dhclient.DefaultParamsRequestList {
-		client.AddParamRequest(param)
-	}
-
-	hostname, _ := os.Hostname()
-	client.AddOption(layers.DHCPOptHostname, []byte(hostname))
-
-	client.Start()
-	defer client.Stop()
-
-	select {
-	case lease := <-leaseCh:
-		return lease, nil
-	case <-ctx.Done():
-		return nil, fmt.Errorf("Could not get DHCP")
-	}
-}
-
 func main() {
 	serverRootFlag := flag.String("root", ".", "Server root, where to serve the files from")
 	ifNameFlag := flag.String("if", "eth0", "Interface to use")
@@ -202,4 +172,61 @@ func main() {
 	if err := server.Serve(); err != nil {
 		log.Panic(err)
 	}
+}
+
+func runDhclient(ctx context.Context, iface *net.Interface) (*dhclient.Lease, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	leaseCh := make(chan *dhclient.Lease)
+	client := dhclient.Client{
+		Iface: iface,
+		OnBound: func(lease *dhclient.Lease) {
+			leaseCh <- lease
+		},
+	}
+
+	for _, param := range dhclient.DefaultParamsRequestList {
+		client.AddParamRequest(param)
+	}
+
+	hostname, _ := os.Hostname()
+	client.AddOption(layers.DHCPOptHostname, []byte(hostname))
+
+	client.Start()
+	defer client.Stop()
+
+	select {
+	case lease := <-leaseCh:
+		return lease, nil
+	case <-ctx.Done():
+		return nil, fmt.Errorf("Could not get DHCP")
+	}
+}
+
+func getValidInterfaces() ([]net.Interface, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	var validInterfaces []net.Interface
+
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+
+		validInterfaces = append(validInterfaces, iface)
+	}
+
+	if len(validInterfaces) == 0 {
+		return nil, fmt.Errorf("Could not find any non-loopback interfaces that are active")
+	}
+
+	return validInterfaces, nil
 }

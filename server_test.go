@@ -10,7 +10,7 @@ import (
 )
 
 func TestServer(t *testing.T) {
-	s, cleanup := talosPxeServerForTest(t)
+	s, cleanup := talosPxeServerForTest(t, true)
 	defer cleanup()
 
 	var err error
@@ -26,7 +26,7 @@ func TestServer(t *testing.T) {
 }
 
 func TestLogInfo(t *testing.T) {
-	s, cleanup := talosPxeServerForTest(t)
+	s, cleanup := talosPxeServerForTest(t, true)
 	defer cleanup()
 	capture, cleanup := NewLogCapture()
 	defer cleanup()
@@ -35,7 +35,7 @@ func TestLogInfo(t *testing.T) {
 	capture.RequireInLog(t, msg)
 }
 
-func talosPxeServerForTest(t *testing.T) (*Server, func()) {
+func talosPxeServerForTest(t *testing.T, startTFTP bool) (*Server, func()) {
 	tmpDir := NewTempDir(t, "talosPxeServerForTest")
 	current := ipxeFileName
 	ipxeFileName = "fakeIpxe"
@@ -50,14 +50,17 @@ func talosPxeServerForTest(t *testing.T) (*Server, func()) {
 	s.HTTPPort = portHTTP
 	s.DNSPort = portDNS
 
-	// TFTP server has to be started because if it is not started then calling Shutdown() is throwing panic
-	// as the tftp is closing connection that does not exist
-	tftpListener, err := net.ListenPacket("udp", fmt.Sprintf("%s:%d", s.IP, s.TFTPPort))
-	require.Nil(t, err)
-	go func() {
-		err = s.serveTFTP(tftpListener)
+	if startTFTP {
+
+		// TFTP server has to be started because if it is not started then calling Shutdown() is throwing panic
+		// as the tftp is closing connection that does not exist
+		tftpListener, err := net.ListenPacket("udp", fmt.Sprintf("%s:%d", s.IP, s.TFTPPort))
 		require.Nil(t, err)
-	}()
+		go func() {
+			err = s.serveTFTP(tftpListener)
+			require.Nil(t, err)
+		}()
+	}
 
 	cleanup := func() {
 		ipxeFileName = current
