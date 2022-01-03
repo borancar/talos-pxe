@@ -4,26 +4,9 @@ import (
 	"fmt"
 	"net"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
-
-func TestServer(t *testing.T) {
-	s, cleanup := talosPxeServerForTest(t, false)
-	defer cleanup()
-
-	var err error
-
-	go func() {
-		err = s.Serve()
-		require.Nil(t, err)
-	}()
-
-	time.Sleep(5 * time.Second)
-
-	require.Nil(t, err)
-}
 
 func TestLogInfo(t *testing.T) {
 	s, cleanup := talosPxeServerForTest(t, true)
