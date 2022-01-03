@@ -155,6 +155,10 @@ func (s *Server) registerDNSEntry(entry string, ip net.IP) {
 }
 
 func (s *Server) serveDNS(l net.PacketConn) error {
+	return s.serverDNS.ServePacket(l)
+}
+
+func (s *Server) configureDNS() []*dnsserver.Config {
 	zone := "talos."
 
 	zoneConfig := &dnsserver.Config{
@@ -193,15 +197,5 @@ func (s *Server) serveDNS(l net.PacketConn) error {
 		return forwardProxy
 	})
 
-	dnsServer, err := dnsserver.NewServer(s.IP.String(), []*dnsserver.Config{zoneConfig, proxyConfig})
-	if err != nil {
-		return err
-	}
-	s.serverDNS = dnsServer
-
-	if err = dnsServer.ServePacket(l); err != nil {
-		return err
-	}
-
-	return nil
+	return []*dnsserver.Config{zoneConfig, proxyConfig}
 }

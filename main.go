@@ -80,7 +80,7 @@ func runDhclient(ctx context.Context, iface *net.Interface) (*dhclient.Lease, er
 	}
 
 	for _, param := range dhclient.DefaultParamsRequestList {
-		client.AddParamRequest(layers.DHCPOpt(param))
+		client.AddParamRequest(param)
 	}
 
 	hostname, _ := os.Hostname()
@@ -129,7 +129,7 @@ func main() {
 
 	log.Infof("Brought %s up\n", eth.NetInterface().Name)
 
-	server := NewServer(*serverRootFlag, eth.NetInterface().Name, *controlplaneFlag)
+	var server *Server
 
 	lease, err := runDhclient(context.Background(), eth.NetInterface())
 	if lease != nil {
@@ -151,21 +151,30 @@ func main() {
 			}
 		}
 
+		server, err = NewServer(lease.FixedAddress, *serverRootFlag, eth.NetInterface().Name, *controlplaneFlag)
+		if err != nil {
+			log.Panic(err)
+		}
+
 		for _, dns := range lease.DNS {
 			log.Infof("Adding DNS %s\n", dns)
 			server.ForwardDns = append(server.ForwardDns, fmt.Sprintf("%s:53", dns))
 		}
 
-		server.IP = lease.FixedAddress
+		server.Net = ipNet
 		server.ProxyDHCP = true
 	} else {
 		// If lese is nil we assume that there is no DHCP server present in the network, so we are going to server it
-		netIp, netNet, err := net.ParseCIDR(*ipAddrFlag)
-		firstIp, lastIp := getAvailableRange(*netNet, netIp)
-		log.Infof("Setting manual address %s, leasing out subnet %s (available range %s - %s)\n", netIp, netNet, firstIp, lastIp)
+		netIp, ipNet, err := net.ParseCIDR(*ipAddrFlag)
+		firstIp, lastIp := getAvailableRange(*ipNet, netIp)
+		log.Infof("Setting manual address %s, leasing out subnet %s (available range %s - %s)\n", netIp, ipNet, firstIp, lastIp)
 
-		server.IP = netIp
-		server.Net = netNet
+		server, err = NewServer(netIp, *serverRootFlag, eth.NetInterface().Name, *controlplaneFlag)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		server.Net = ipNet
 		server.ProxyDHCP = false
 
 		server.DHCPAllocator, err = bitmap.NewIPv4Allocator(firstIp, lastIp)
@@ -173,7 +182,7 @@ func main() {
 			log.Panic(err)
 		}
 
-		if err := eth.SetLinkIp(netIp, netNet); err != nil && err != syscall.EEXIST {
+		if err := eth.SetLinkIp(netIp, ipNet); err != nil && err != syscall.EEXIST {
 			log.Panic(err)
 		}
 	}

@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	web "github.com/poseidon/matchbox/matchbox/http"
+	matchboxServer "github.com/poseidon/matchbox/matchbox/server"
+	"github.com/poseidon/matchbox/matchbox/storage"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,9 +17,6 @@ import (
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/insomniacslk/dhcp/dhcpv4/server4"
 	"github.com/pin/tftp"
-	web "github.com/poseidon/matchbox/matchbox/http"
-	matchboxServer "github.com/poseidon/matchbox/matchbox/server"
-	"github.com/poseidon/matchbox/matchbox/storage"
 )
 
 type DHCPRecord struct {
@@ -119,7 +119,7 @@ func (s *Server) Serve() error {
 	go func() { s.errs <- s.servePXE(cPxe) }()
 	go func() { s.errs <- s.serveTFTP(cTftp) }()
 	go func() { s.errs <- s.startMatchbox(cHttp) }()
-	go func() { s.errs <- s.startDhcp() }()
+	go func() { s.errs <- s.startDHCP() }()
 	go func() { s.errs <- s.serveDNS(cDns) }()
 
 	// Wait for either a fatal error, or Shutdown().
@@ -127,8 +127,11 @@ func (s *Server) Serve() error {
 	return err
 }
 
-func NewServer(serverRoot, interfaceName, controlplane string) *Server {
-	return &Server{
+func NewServer(ip net.IP, serverRoot, interfaceName, controlplane string) (*Server, error) {
+	var err error
+
+	s := &Server{
+		IP:           ip,
 		ServerRoot:   serverRoot,
 		Intf:         interfaceName,
 		Controlplane: controlplane,
@@ -144,26 +147,47 @@ func NewServer(serverRoot, interfaceName, controlplane string) *Server {
 		// blocking.
 		errs: make(chan error, 6),
 	}
-}
 
-func (s *Server) startMatchbox(l net.Listener) error {
-	store := storage.NewFileStore(&storage.Config{
-		Root: s.ServerRoot,
-	})
-
+	// Configure matchBoxServer
 	server := matchboxServer.NewServer(&matchboxServer.Config{
-		Store: store,
+		Store: storage.NewFileStore(&storage.Config{
+			Root: serverRoot,
+		}),
 	})
-
 	config := &web.Config{
 		Core:       server,
 		Logger:     log,
-		AssetsPath: filepath.Join(s.ServerRoot, "assets"),
+		AssetsPath: filepath.Join(serverRoot, "assets"),
 	}
-
 	s.serverHttp = &http.Server{
 		Handler: s.ipxeWrapperMenuHandler(web.NewServer(config).HTTPHandler()),
 	}
+
+	// Configure TFTP server
+	s.serverTFTP = tftp.NewServer(s.readHandlerTFTP, nil)
+	s.serverTFTP.SetHook(&TFTPHook{})
+
+	// Configure DHCP server
+	s.serverDHCP, err = server4.NewServer(
+		s.Intf,
+		nil,
+		s.handlerDHCP4(),
+		server4.WithLogger(DHCPLogger{}),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	// Configure DNS server
+	s.serverDNS, err = dnsserver.NewServer(s.IP.String(), s.configureDNS())
+	if err != nil {
+		return nil, err
+	}
+
+	return s, nil
+}
+
+func (s *Server) startMatchbox(l net.Listener) error {
 
 	if err := s.serverHttp.Serve(l); err != nil {
 		return fmt.Errorf("Matchbox server shut down: %s", err)

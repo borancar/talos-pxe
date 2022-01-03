@@ -175,21 +175,8 @@ func (l DHCPLogger) Printf(format string, v ...interface{}) {
 	log.Infof(format, v...)
 }
 
-func (s *Server) startDhcp() error {
-	logger := DHCPLogger{}
-
-	server, err := server4.NewServer(
-		s.Intf,
-		nil,
-		s.handlerDHCP4(),
-		server4.WithLogger(logger),
-	)
-
-	if err != nil {
-		return err
-	}
-	s.serverDHCP = server
-	return server.Serve()
+func (s *Server) startDHCP() error {
+	return s.serverDHCP.Serve()
 }
 
 func getAvailableRange(netIp net.IPNet, netServer net.IP) (net.IP, net.IP) {

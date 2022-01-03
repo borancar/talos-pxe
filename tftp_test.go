@@ -115,9 +115,9 @@ func talosPxeServerForTest(t *testing.T) (*Server, func()) {
 	ipxeFileName = "fakeIpxe"
 	_ = tmpDir.Write(ipxeFileName, "my fake fakeIpxe")
 
-	s := NewServer(tmpDir.path, "lo", defaultControlplane)
-	s.IP = net.IPv4(127, 0, 0, 1)
-	s.ServerRoot = tmpDir.path
+	s, err := NewServer(net.IPv4(127, 0, 0, 1), tmpDir.path, "lo", defaultControlplane)
+	require.Nil(t, err)
+
 	s.DHCPPort = portDHCP
 	s.TFTPPort = portTFTP
 	s.PXEPort = portPXE
