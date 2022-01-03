@@ -103,28 +103,26 @@ func (s *Server) Serve() error {
 		s.ForwardDns = []string{forwardDns}
 	}
 
-	tftp, err := net.ListenPacket("udp", fmt.Sprintf("%s:%d", s.IP, s.TFTPPort))
+	cTftp, err := net.ListenPacket("udp", fmt.Sprintf("%s:%d", s.IP, s.TFTPPort))
 	if err != nil {
 		return err
 	}
-	pxe, err := net.ListenPacket("udp4", fmt.Sprintf("%s:%d", s.IP, s.PXEPort))
+	defer cTftp.Close()
+	cPxe, err := net.ListenPacket("udp4", fmt.Sprintf("%s:%d", s.IP, s.PXEPort))
 	if err != nil {
-		tftp.Close()
 		return err
 	}
-	http, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.IP, s.HTTPPort))
+	defer cPxe.Close()
+	cHttp, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.IP, s.HTTPPort))
 	if err != nil {
-		tftp.Close()
-		pxe.Close()
 		return err
 	}
-	dns, err := net.ListenPacket("udp", fmt.Sprintf("%s:%d", s.IP, s.DNSPort))
+	defer cHttp.Close()
+	cDns, err := net.ListenPacket("udp", fmt.Sprintf("%s:%d", s.IP, s.DNSPort))
 	if err != nil {
-		http.Close()
-		tftp.Close()
-		pxe.Close()
 		return err
 	}
+	defer cDns.Close()
 
 	// 6 buffer slots, one for each goroutine, plus one for
 	// Shutdown(). We only ever pull the first error out, but shutdown
@@ -135,18 +133,14 @@ func (s *Server) Serve() error {
 
 	log.Info("Starting servers")
 
-	go func() { s.errs <- s.servePXE(pxe) }()
-	go func() { s.errs <- s.serveTFTP(tftp) }()
-	go func() { s.errs <- s.startMatchbox(http) }()
+	go func() { s.errs <- s.servePXE(cPxe) }()
+	go func() { s.errs <- s.serveTFTP(cTftp) }()
+	go func() { s.errs <- s.startMatchbox(cHttp) }()
 	go func() { s.errs <- s.startDhcp() }()
-	go func() { s.errs <- s.serveDNS(dns) }()
+	go func() { s.errs <- s.serveDNS(cDns) }()
 
 	// Wait for either a fatal error, or Shutdown().
 	err = <-s.errs
-	dns.Close()
-	http.Close()
-	tftp.Close()
-	pxe.Close()
 	return err
 }
 

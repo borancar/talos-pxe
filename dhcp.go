@@ -25,7 +25,7 @@ import (
 )
 
 func (s *Server) handlerDHCP4() server4.Handler {
-	leaseTime := 5*time.Minute
+	leaseTime := 5 * time.Minute
 
 	return func(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4) {
 		log.Debugf("DHCPv4: got %s", m.Summary())
@@ -81,7 +81,7 @@ func (s *Server) handlerDHCP4() server4.Handler {
 				}
 
 				record = &DHCPRecord{
-					IP: newIp.IP,
+					IP:      newIp.IP,
 					expires: time.Now().Add(leaseTime),
 				}
 				s.DHCPRecords[m.ClientHWAddr.String()] = record
@@ -188,7 +188,5 @@ func (s *Server) startDhcp() error {
 		return err
 	}
 
-	server.Serve()
-
-	return nil
+	return server.Serve()
 }
