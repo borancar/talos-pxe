@@ -4,16 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
-	"os"
-	"path"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/pin/tftp"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,13 +48,7 @@ func TestServeTFTP(t *testing.T) {
 	s, cleanup := talosPxeServerForTest(t)
 	defer cleanup()
 
-	// Run the TFPT server
-	go func() {
-		tftpListener, err := net.ListenPacket("udp", fmt.Sprintf("%s:%d", s.IP, s.TFTPPort))
-		require.Nil(t, err)
-		err = s.serveTFTP(tftpListener)
-		require.Nil(t, err)
-	}()
+	require.NotNil(t, s)
 
 	c, err := tftp.NewClient("127.0.0.1:69")
 	require.Nil(t, err)
@@ -97,106 +85,4 @@ func TestServeTFTP(t *testing.T) {
 
 		fmt.Printf("Error %v", err)
 	}
-}
-
-func TestLogInfo(t *testing.T) {
-	s, cleanup := talosPxeServerForTest(t)
-	defer cleanup()
-	capture, cleanup := NewLogCapture()
-	defer cleanup()
-	msg := "This is stupid but coverage looks good so meh"
-	s.logInfo(msg)
-	capture.RequireInLog(t, msg)
-}
-
-func talosPxeServerForTest(t *testing.T) (*Server, func()) {
-	tmpDir := NewTempDir(t, "talosPxeServerForTest")
-	current := ipxeFileName
-	ipxeFileName = "fakeIpxe"
-	_ = tmpDir.Write(ipxeFileName, "my fake fakeIpxe")
-
-	s, err := NewServer(net.IPv4(127, 0, 0, 1), tmpDir.path, "lo", defaultControlplane)
-	require.Nil(t, err)
-
-	s.DHCPPort = portDHCP
-	s.TFTPPort = portTFTP
-	s.PXEPort = portPXE
-	s.HTTPPort = portHTTP
-	s.DNSPort = portDNS
-
-	cleanup := func() {
-		ipxeFileName = current
-		tmpDir.Cleanup()
-		s.Shutdown()
-	}
-	return s, cleanup
-}
-
-type LogCapture struct {
-	buf bytes.Buffer
-}
-
-func NewLogCapture() (*LogCapture, func()) {
-	c := LogCapture{}
-	current := logrus.StandardLogger().Out
-	log.SetOutput(&c.buf)
-	return &c, func() { log.SetOutput(current) }
-}
-
-func (c *LogCapture) RequireInLog(t *testing.T, phrase string) {
-	if strings.Contains(c.buf.String(), phrase) {
-		return
-	}
-	t.Fatalf("Logs do not contain [%s], in\n%s", phrase, c.buf.String())
-}
-
-type TempDir struct {
-	*testing.T
-	path string
-}
-
-func NewTempDir(t *testing.T, prefix string) *TempDir {
-	tmpDir, err := ioutil.TempDir("", prefix)
-	if err != nil {
-		t.Fatalf("Error creating tmp dir %v", err)
-	}
-	td := TempDir{
-		T:    t,
-		path: tmpDir,
-	}
-	return &td
-}
-
-func (td *TempDir) Path() string {
-	return td.path
-}
-
-func (td *TempDir) Cleanup() {
-	err := os.RemoveAll(td.path)
-	if err != nil {
-		td.Errorf("Error deleting temp dir %v", err)
-	}
-}
-
-func (td *TempDir) Write(fname, content string) string {
-	filePath := path.Join(td.path, fname)
-	err := ioutil.WriteFile(filePath, bytes.NewBufferString(content).Bytes(), 0755)
-	if err != nil {
-		td.Fatalf("Error creating done file %v", err)
-	}
-	return filePath
-}
-
-func (td *TempDir) ReadFile(fname string) string {
-	file, err := os.Open(filepath.Join(td.path, fname))
-	if err != nil {
-		td.Fatalf("Error opening memory file %v", err)
-		return ""
-	}
-	b := make([]byte, 0)
-	_, err = file.Read(b)
-	if err != nil {
-		td.Fatalf("Error reading memory file %v", err)
-	}
-	return string(b)
 }

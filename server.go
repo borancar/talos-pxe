@@ -61,7 +61,7 @@ type Server struct {
 
 	errs chan error
 	// pointers to servers needed for shutdowns
-	serverHttp *http.Server
+	serverHTTP *http.Server
 	serverTFTP *tftp.Server
 	serverDHCP *server4.Server
 	serverDNS  *dnsserver.Server
@@ -127,6 +127,7 @@ func (s *Server) Serve() error {
 	return err
 }
 
+// NewServer creates the talos-pxe server and prepares all the inner servers without starting them
 func NewServer(ip net.IP, serverRoot, interfaceName, controlplane string) (*Server, error) {
 	var err error
 
@@ -147,8 +148,7 @@ func NewServer(ip net.IP, serverRoot, interfaceName, controlplane string) (*Serv
 		// blocking.
 		errs: make(chan error, 6),
 	}
-
-	// Configure matchBoxServer
+	// Configure MatchBox server
 	server := matchboxServer.NewServer(&matchboxServer.Config{
 		Store: storage.NewFileStore(&storage.Config{
 			Root: serverRoot,
@@ -159,7 +159,7 @@ func NewServer(ip net.IP, serverRoot, interfaceName, controlplane string) (*Serv
 		Logger:     log,
 		AssetsPath: filepath.Join(serverRoot, "assets"),
 	}
-	s.serverHttp = &http.Server{
+	s.serverHTTP = &http.Server{
 		Handler: s.ipxeWrapperMenuHandler(web.NewServer(config).HTTPHandler()),
 	}
 
@@ -187,24 +187,16 @@ func NewServer(ip net.IP, serverRoot, interfaceName, controlplane string) (*Serv
 	return s, nil
 }
 
-func (s *Server) startMatchbox(l net.Listener) error {
-
-	if err := s.serverHttp.Serve(l); err != nil {
-		return fmt.Errorf("Matchbox server shut down: %s", err)
-	}
-
-	return nil
-}
-
 // Shutdown causes Serve() to exit, cleaning up behind itself.
 func (s *Server) Shutdown() {
 	close(s.closeServers)
 	if err := s.serverDHCP.Close(); err != nil {
 		log.Warnf("Error closing DHCP server: %v", err)
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
-	if err := s.serverHttp.Shutdown(ctx); err != nil {
+	if err := s.serverHTTP.Shutdown(ctx); err != nil {
 		log.Warnf("Error closing HTTP server: %v", err)
 	}
 	s.serverTFTP.Shutdown()
@@ -259,31 +251,11 @@ func getInterface(addr net.IP) (*net.Interface, net.IPMask, error) {
 	return nil, nil, fmt.Errorf("Could not find interface for address")
 }
 
-func getValidInterfaces() ([]net.Interface, error) {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return nil, err
+func (s *Server) startMatchbox(l net.Listener) error {
+	if err := s.serverHTTP.Serve(l); err != nil {
+		return fmt.Errorf("Matchbox server shut down: %s", err)
 	}
-
-	var validInterfaces []net.Interface
-
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-
-		if iface.Flags&net.FlagUp == 0 {
-			continue
-		}
-
-		validInterfaces = append(validInterfaces, iface)
-	}
-
-	if len(validInterfaces) == 0 {
-		return nil, fmt.Errorf("Could not find any non-loopback interfaces that are active")
-	}
-
-	return validInterfaces, nil
+	return nil
 }
 
 // ipxeWrapperMenuHandler
