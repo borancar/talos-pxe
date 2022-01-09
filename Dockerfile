@@ -13,9 +13,9 @@ COPY pxe.go .
 COPY tftp.go .
 COPY dns.go .
 COPY server.go .
-#COPY vendor vendor  
+COPY vendor vendor  
 
-RUN go mod download -x
+#RUN go mod download -x0
 RUN go install
 RUN echo 'alias ll="ls -lah --color"' >> /root/.bashrc
 
