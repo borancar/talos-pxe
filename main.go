@@ -99,7 +99,7 @@ func main() {
 
 	var server *Server
 
-	lease, err := getDHCPlease(eth.NetInterface(), time.Second*10)
+	lease, _ := getDHCPlease(eth.NetInterface(), time.Second*10)
 	if lease != nil {
 		log.Infof("Obtained address %s\n", lease.FixedAddress)
 
@@ -124,9 +124,15 @@ func main() {
 			log.Panic(err)
 		}
 
-		for _, dns := range lease.DNS {
-			log.Infof("Adding DNS %s\n", dns)
-			server.ForwardDns = append(server.ForwardDns, fmt.Sprintf("%s:53", dns))
+		if len(lease.DNS) > 0 {
+			var dnsForwards = make([]string, len(lease.DNS))
+			for i, oneDnsServer := range lease.DNS {
+				log.Infof("Adding DNS %s\n", oneDnsServer)
+				dnsForwards[i] = fmt.Sprintf("%s:53", oneDnsServer)
+			}
+			if err := server.ConfigureDnsServer(dnsForwards, portDNS); err != nil {
+				log.Panicf("Error configuring DNS: %v", err)
+			}
 		}
 
 		server.Net = ipNet
@@ -134,12 +140,15 @@ func main() {
 	} else {
 		// If lese is nil we assume that there is no DHCP server present in the network, so we are going to server it
 		netIp, ipNet, err := net.ParseCIDR(*ipAddrFlag)
+		if err != nil {
+			log.Panicf("Error parsing cidr %s, %v", *ipAddrFlag, err)
+		}
 		firstIp, lastIp := getAvailableRange(*ipNet, netIp)
 		log.Infof("Setting manual address %s, leasing out subnet %s (available range %s - %s)\n", netIp, ipNet, firstIp, lastIp)
 
 		server, err = NewServer(netIp, *serverRootFlag, eth.NetInterface().Name, *controlplaneFlag)
 		if err != nil {
-			log.Panic(err)
+			log.Panicf("Error creating server: %v", err)
 		}
 
 		server.Net = ipNet
@@ -168,7 +177,7 @@ func main() {
 	}
 
 	if err := server.Serve(); err != nil {
-		log.Panic(err)
+		log.Panicf("Error from server.Serve: %v", err)
 	}
 }
 

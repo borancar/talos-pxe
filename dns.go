@@ -158,7 +158,7 @@ func (s *Server) serveDNS(l net.PacketConn) error {
 	return s.serverDNS.ServePacket(l)
 }
 
-func (s *Server) configureDNS() []*dnsserver.Config {
+func (s *Server) prepConfDNS() []*dnsserver.Config {
 	zone := "talos."
 
 	zoneConfig := &dnsserver.Config{

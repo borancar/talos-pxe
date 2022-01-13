@@ -73,25 +73,6 @@ type Server struct {
 // Serve listens for machines attempting to boot, and uses Booter to
 // help them.
 func (s *Server) Serve() error {
-	if s.DHCPPort == 0 {
-		s.DHCPPort = portDHCP
-	}
-	if s.TFTPPort == 0 {
-		s.TFTPPort = portTFTP
-	}
-	if s.PXEPort == 0 {
-		s.PXEPort = portPXE
-	}
-	if s.HTTPPort == 0 {
-		s.HTTPPort = portHTTP
-	}
-	if s.DNSPort == 0 {
-		s.DNSPort = portDNS
-	}
-
-	if len(s.ForwardDns) == 0 {
-		s.ForwardDns = []string{forwardDns}
-	}
 
 	cTftp, err := net.ListenPacket("udp", fmt.Sprintf("%s:%d", s.IP, s.TFTPPort))
 	if err != nil {
@@ -146,7 +127,11 @@ func NewServer(ip net.IP, serverRoot, interfaceName, controlplane string) (*Serv
 		// will likely generate some spurious errors from the other
 		// goroutines, and we want them to be able to dump them without
 		// blocking.
-		errs: make(chan error, 6),
+		errs:     make(chan error, 6),
+		DHCPPort: portDHCP,
+		TFTPPort: portTFTP,
+		PXEPort:  portPXE,
+		HTTPPort: portHTTP,
 	}
 	// Configure MatchBox server
 	server := matchboxServer.NewServer(&matchboxServer.Config{
@@ -174,17 +159,25 @@ func NewServer(ip net.IP, serverRoot, interfaceName, controlplane string) (*Serv
 		s.handlerDHCP4(),
 		server4.WithLogger(DHCPLogger{}),
 	)
-
 	if err != nil {
 		return nil, err
 	}
-	// Configure DNS server
-	s.serverDNS, err = dnsserver.NewServer(s.IP.String(), s.configureDNS())
-	if err != nil {
+
+	if err := s.ConfigureDnsServer([]string{forwardDns}, portDNS); err != nil {
 		return nil, err
 	}
 
 	return s, nil
+}
+
+// ConfigureDnsServer is needed to overwrite default DNS configuration that is set up in NewServer()
+func (s *Server) ConfigureDnsServer(forwardDns []string, port int) (err error) {
+	s.ForwardDns = forwardDns
+	s.DNSPort = port
+
+	dnsConfig := s.prepConfDNS()
+	s.serverDNS, err = dnsserver.NewServer(s.IP.String(), dnsConfig)
+	return err
 }
 
 // Shutdown causes Serve() to exit, cleaning up behind itself.
@@ -268,7 +261,7 @@ func (s *Server) ipxeWrapperMenuHandler(primaryHandler http.Handler) http.Handle
 		rr := httptest.NewRecorder()
 		primaryHandler.ServeHTTP(rr, req)
 
-		if rr.Code != http.StatusOK {
+		if rr.Code == http.StatusOK {
 			if err := req.ParseForm(); err != nil {
 				log.Errorf("Error ParseForm: %v", err)
 				return
