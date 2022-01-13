@@ -14,7 +14,7 @@ import (
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/insomniacslk/dhcp/dhcpv4/server4"
 	"github.com/pin/tftp"
-	web "github.com/poseidon/matchbox/matchbox/http"
+	matchboxHttp "github.com/poseidon/matchbox/matchbox/http"
 	matchboxServer "github.com/poseidon/matchbox/matchbox/server"
 	"github.com/poseidon/matchbox/matchbox/storage"
 )
@@ -140,13 +140,13 @@ func NewServer(ip net.IP, serverRoot, interfaceName, controlplane string) (*Serv
 			Root: serverRoot,
 		}),
 	})
-	config := &web.Config{
+	config := &matchboxHttp.Config{
 		Core:       server,
 		Logger:     log,
 		AssetsPath: filepath.Join(serverRoot, "assets"),
 	}
 	s.serverHTTP = &http.Server{
-		Handler: s.ipxeWrapperMenuHandler(web.NewServer(config).HTTPHandler()),
+		Handler: s.ipxeWrapperMenuHandler(matchboxHttp.NewServer(config).HTTPHandler()),
 	}
 
 	// Configure TFTP server
@@ -204,6 +204,61 @@ func (s *Server) Shutdown() {
 	}
 }
 
+func (s *Server) startMatchbox(l net.Listener) error {
+	if err := s.serverHTTP.Serve(l); err != nil {
+		return fmt.Errorf("Matchbox server shut down: %s", err)
+	}
+	return nil
+}
+
+// ipxeWrapperMenuHandler
+func (s *Server) ipxeWrapperMenuHandler(primaryHandler http.Handler) http.Handler {
+	fn := func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "ipxe" && req.URL.Path != "/ipxe" {
+			primaryHandler.ServeHTTP(w, req)
+			return
+		}
+		rr := httptest.NewRecorder()
+		primaryHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			log.Info("Serving menu")
+			if err := ipxeMenuTemplate.Execute(w, s); err != nil {
+				log.Error(err)
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+			return
+		}
+
+		if err := req.ParseForm(); err != nil {
+			log.Errorf("Error ParseForm: %v", err)
+			return
+		}
+
+		machineType := req.Form.Get("type")
+		remoteIp := net.ParseIP(req.Form.Get("ip"))
+		log.Infof("Selecting %s for %s", machineType, remoteIp)
+
+		if machineType == "init" || machineType == "controlplane" {
+			s.registerDNSEntry(s.Controlplane, remoteIp)
+		}
+
+		for key, values := range rr.HeaderMap {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
+
+		w.WriteHeader(rr.Code)
+
+		if _, err := w.Write(rr.Body.Bytes()); err != nil {
+			log.Errorf("Error wrtiting body bytes %v", err)
+		}
+	}
+
+	return http.HandlerFunc(fn)
+}
+
 func getPrivateAddress() (net.IP, error) {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
@@ -244,59 +299,4 @@ func getInterface(addr net.IP) (*net.Interface, net.IPMask, error) {
 	}
 
 	return nil, nil, fmt.Errorf("Could not find interface for address")
-}
-
-func (s *Server) startMatchbox(l net.Listener) error {
-	if err := s.serverHTTP.Serve(l); err != nil {
-		return fmt.Errorf("Matchbox server shut down: %s", err)
-	}
-	return nil
-}
-
-// ipxeWrapperMenuHandler
-func (s *Server) ipxeWrapperMenuHandler(primaryHandler http.Handler) http.Handler {
-	fn := func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "ipxe" && req.URL.Path != "/ipxe" {
-			primaryHandler.ServeHTTP(w, req)
-			return
-		}
-
-		rr := httptest.NewRecorder()
-		primaryHandler.ServeHTTP(rr, req)
-
-		if rr.Code == http.StatusOK {
-			if err := req.ParseForm(); err != nil {
-				log.Errorf("Error ParseForm: %v", err)
-				return
-			}
-			machineType := req.Form.Get("type")
-			remoteIp := net.ParseIP(req.Form.Get("ip"))
-			log.Infof("Selecting %s for %s", machineType, remoteIp)
-
-			if machineType == "init" || machineType == "controlplane" {
-				s.registerDNSEntry(s.Controlplane, remoteIp)
-			}
-
-			for key, values := range rr.HeaderMap {
-				for _, value := range values {
-					w.Header().Add(key, value)
-				}
-			}
-
-			w.WriteHeader(rr.Code)
-
-			if _, err := w.Write(rr.Body.Bytes()); err != nil {
-				log.Errorf("Error wrtiting body bytes %v", err)
-			}
-		} else {
-			log.Info("Serving menu")
-
-			if err := ipxeMenuTemplate.Execute(w, s); err != nil {
-				log.Error(err)
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-		}
-	}
-
-	return http.HandlerFunc(fn)
 }
