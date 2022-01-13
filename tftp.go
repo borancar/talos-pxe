@@ -18,13 +18,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/pin/tftp"
 	"io"
 	"io/ioutil"
 	"net"
 	"path/filepath"
 	"strings"
-
-	"github.com/pin/tftp"
 )
 
 var (
@@ -39,7 +38,10 @@ func (h *TFTPHook) OnSuccess(stats tftp.TransferStats) {
 }
 
 func (h *TFTPHook) OnFailure(stats tftp.TransferStats, err error) {
-	log.Errorf("Failure transferring %s to %s: %s", stats.Filename, stats.RemoteAddr, err)
+	log.Errorf("TFTPHook Failure transferring %s to %s: %s", stats.Filename, stats.RemoteAddr, err)
+	if strings.Contains(err.Error(), "use of closed network connection") {
+		//time.Sleep(time.Second)
+	}
 }
 
 // readHandlerTFTP is called when client starts file download from server
@@ -81,6 +83,7 @@ func (s *Server) prepIpxeContent(classId, classInfo string) ([]byte, error) {
 }
 
 func (s *Server) serveTFTP(l net.PacketConn) error {
+	s.tFTPStarted = true
 	if err := s.serverTFTP.Serve(l); err != nil {
 		return fmt.Errorf("TFTP server shut down: %s", err)
 	}

@@ -68,6 +68,7 @@ type Server struct {
 
 	// the PXE does not have server object just a socket that we close when Serve() exits
 	closeServers chan struct{}
+	tFTPStarted  bool
 }
 
 // Serve listens for machines attempting to boot, and uses Booter to
@@ -191,7 +192,9 @@ func (s *Server) Shutdown() {
 	if err := s.serverHTTP.Shutdown(ctx); err != nil {
 		log.Warnf("Error closing HTTP server: %v", err)
 	}
-	s.serverTFTP.Shutdown()
+	if s.tFTPStarted {
+		s.serverTFTP.Shutdown()
+	}
 	if err := s.serverDNS.Stop(); err != nil {
 		log.Warnf("Error closing DNS server: %v", err)
 	}
