@@ -1,6 +1,8 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 out/*.html
+talos-pxe
+talos-pxe-masters
 
 assets/*amd64*
 assets/*.yaml
