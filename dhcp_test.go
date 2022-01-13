@@ -26,8 +26,8 @@ func Test_getAvailableRange(t *testing.T) {
 			require.Nil(t, err)
 
 			got, got1 := getAvailableRange(*ipNet, netIp)
-			require.Equal(t, tt.want, got)
-			require.Equal(t, tt.want1, got1)
+			require.Equal(t, tt.want, got.String())
+			require.Equal(t, tt.want1, got1.String())
 		})
 	}
 }
