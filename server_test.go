@@ -65,7 +65,7 @@ func Test_ipxeWrapperMenuHandler(t *testing.T) {
 		capture.RequireInLog(t, "Error ParseForm: invalid URL escape")
 	})
 
-	t.Run("Call to init get registered with dns server", func(t *testing.T) {
+	t.Run("Call to init is registered with dns server", func(t *testing.T) {
 		capture, cleanupLogger := NewLogCapture()
 		defer cleanupLogger()
 		writer := myWriter{}
@@ -76,7 +76,7 @@ func Test_ipxeWrapperMenuHandler(t *testing.T) {
 		require.Equal(t, "1.2.3.4", s.DNSRecordsv4[s.Controlplane][0].String())
 	})
 
-	t.Run("Call to controlplane get registered with dns server", func(t *testing.T) {
+	t.Run("Call to controlplane is registered with dns server", func(t *testing.T) {
 		capture, cleanupLogger := NewLogCapture()
 		defer cleanupLogger()
 		writer := myWriter{}
