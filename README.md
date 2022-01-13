@@ -12,7 +12,7 @@ Talos PXE is a project aimed at boostrapping an initial Talos cluster from a sin
 
 ## Building
 
-You need to download the Talos kernel and initramfs before proceeding. These should be placed in `assets`:
+You need to download the Talos kernel and initramfs before proceeding. Files can be found on [talos release page](https://github.com/talos-systems/talos/releases) These should be placed in `assets`:
 
 ```
 assets/initramfs-amd64.xz
