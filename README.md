@@ -62,7 +62,7 @@ Used virtualization `libvirt + KVM`
 
 ### Prepare binary and served files
 
-1. Do steps from build section, about assets and talos configs 
+1. Follow steps from build section, about assets and talos configs 
 2. Set required capabilities on the talos-pxe binary
     ```bash
     sudo setcap cap_net_raw,cap_net_admin,cap_net_bind_service+eip ./talos-pxe
@@ -85,22 +85,22 @@ Used virtualization `libvirt + KVM`
 
     sudo kill -9 <pid for dnsmasq>
     ```
-2. You might need to alow ports needed by talos-pxe to be open, I did not have to on Ubuntu 20.04
+2. You might need to allow ports needed by talos-pxe to be open, I did not have to on Ubuntu 20.04
 3. Run talos-pxe
    ```bash /talos-pxe --if virbr0 --addr 192.168.122.1/24```
-4. In virt-manager create new vm with PXE boot and watch it working
+4. In virt-manager create a new vm with PXE boot and watch it working
 
 ### Setup for verifying DHCP proxy mode
-
-1. We need to set up a interface that is controlled by talos-pxe and connected to the virbr0 interface tha other DHCP server is controlling, (dnsmasq in my case)
-to get there we are doing some magic with a veth pair. 
+1. If you were runing the no proxy mode first then get the dnsmasq back up
+2. We need to set up an interface that is controlled by talos-pxe and connected to the virbr0 interface tha other DHCP server is controlling, (dnsmasq in my case)
+to get there we are doing some magic with a veth pair: 
     ```bash
     sudo ip link add eth0 type veth peer name eth1
     sudo ip link set dev eth1 master virbr0
     sudo ip link set eth1 up
     ```
-2. Again you might need to set some firewall rules for the ports used by talos-pxe, I did not have to. 
-3. Run talos pxe with that interface
+3. Again you might need to set some firewall rules for the ports used by talos-pxe, I did not have to. 
+4. Run talos pxe with that interface
 ```bash ./talos-pxe --if eth1 ```
 
  
