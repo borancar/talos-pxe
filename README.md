@@ -43,7 +43,7 @@ linuxkit build -docker -format iso-bios linux.yml
 ## Unittests
 
 Unittests are run in a docker container, that is build before the tests, so they can be run on Linux or Mac. (I have not tried 
-Windows). Coverage files can be found after run in out/coverage.html 
+Windows). Coverage files can be found after run in out/coverage.html.
 
 ```bash
 make unittest
@@ -58,19 +58,19 @@ make unittest-one TEST_PATTERN=<test name>
 ## Local verification setup
 
 Disclaimer: This setup will probably not work for you, but it can remind me in a few months how to set this thing up.
-Used virtualization `libvirt + KVM`
+Used virtualization `libvirt + KVM`.
 
 ### Prepare binary and served files
 
-1. Follow steps from build section, about assets and talos configs 
-2. Set required capabilities on the talos-pxe binary
+1. Follow steps from build section, about assets and talos configs. 
+2. Set required capabilities on the talos-pxe binary:
     ```bash
     sudo setcap cap_net_raw,cap_net_admin,cap_net_bind_service+eip ./talos-pxe
     ```
 
 ### Setup for verifying DHCP no proxy mode
 
-1. Stop DHCP service on the virbr0 interface, find ip range used on that interface, it is 192.168.122.1/24 in my case, then find DHCP server on it.
+1. Stop DHCP service on the virbr0 interface, find ip range used on that interface, it is 192.168.122.1/24 in my case, then find DHCP server on it:
     ```bash
     sudo netstat -lutnp
     
@@ -84,14 +84,14 @@ Used virtualization `libvirt + KVM`
 
     sudo kill -9 <pid for dnsmasq>
     ```
-2. You might need to allow ports needed by talos-pxe to be open, I did not have to on Ubuntu 20.04
-3. Run talos-pxe
+2. You might need to allow ports needed by talos-pxe to be open, I did not have to on Ubuntu 20.04.
+3. Run talos-pxe:
    ```bash /talos-pxe --if virbr0 --addr 192.168.122.1/24```
-4. In virt-manager create a new vm with PXE boot and watch it working
+4. In virt-manager create a new vm with PXE boot and watch it working.
 
 ### Setup for verifying DHCP proxy mode
-1. If you were runing the no proxy mode first then get the dnsmasq back up
-2. We need to set up an interface that is controlled by talos-pxe and connected to the virbr0 interface tha other DHCP server is controlling, (dnsmasq in my case)
+1. If you were runing the no proxy mode first then get the dnsmasq back up.
+2. We need to set up an interface that is controlled by talos-pxe and connected to the virbr0 interface tha other DHCP server is controlling, (dnsmasq in my case).
 to get there we are doing some magic with a veth pair: 
     ```bash
     sudo ip link add eth0 type veth peer name eth1
@@ -99,7 +99,7 @@ to get there we are doing some magic with a veth pair:
     sudo ip link set eth1 up
     ```
 3. Again you might need to set some firewall rules for the ports used by talos-pxe, I did not have to. 
-4. Run talos pxe with that interface
+4. Run talos pxe with that interface:
 ```bash ./talos-pxe --if eth1 ```
 
  
