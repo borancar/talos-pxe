@@ -39,3 +39,34 @@ linuxkit build -docker -format iso-bios linux.yml
 
 (if you get a VFS error booting this image, you may need to try other formats like `raw-bios` or `raw-efi`)
 ```
+
+## Unittests
+
+Unittests are run in a docker container, that is build before the tests, so they can be run on Linux or Mac. (I have not tried 
+Windows). Coverage files can be found after run in out/coverage.html 
+
+```bash
+make unittest
+```
+
+One test can be run with following make target:
+
+```bash
+make unittest-one TEST_PATTERN=<test name>
+```
+
+## Local verification setup
+
+Disclaimer: This setup will probably not work for you, but it can remind me in a few months how to set this thing up.
+Used virtualization `libvirt + KVM`
+
+### Setup for verifying DHCP no proxy mode
+
+1. Do steps from build section, about assets and talos configs 
+2. Set required capabilities on the talos-pxe binary
+    ```bash
+    sudo setcap cap_net_raw,cap_net_admin,cap_net_bind_service+eip ./talos-pxe
+    ```
+3. Stop DHCP servis 
+
+
