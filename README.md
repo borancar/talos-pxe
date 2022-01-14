@@ -70,8 +70,7 @@ Used virtualization `libvirt + KVM`
 
 ### Setup for verifying DHCP no proxy mode
 
-1. Stop DHCP service on the virbr0 interface
-    - find ip range used on that interface, it is 192.168.122.1/24 in my case
+1. Stop DHCP service on the virbr0 interface, find ip range used on that interface, it is 192.168.122.1/24 in my case, then find DHCP server on it.
     ```bash
     sudo netstat -lutnp
     
