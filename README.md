@@ -98,8 +98,13 @@ to get there we are doing some magic with a veth pair:
     sudo ip link set dev eth1 master virbr0
     sudo ip link set eth1 up
     ```
-3. Again you might need to set some firewall rules for the ports used by talos-pxe, I did not have to. 
+3. Again you might need to set some firewall rules for the ports used by talos-pxe, I did not have to on Ubuntu 20.04, On RHEL/Fedora do:
+   ```bash
+   sudo firewall-cmd --add-port=4011/tcp --zone=libvirt
+   sudo firewall-cmd --add-interface=eth0 --zone=libvirt
+   sudo firewall-cmd --add-interface=eth1 --zone=libvirt
+   ```
 4. Run talos pxe with that interface:
-```bash ./talos-pxe --if eth1 ```
+```bash ./talos-pxe --if eth0 ```
 
  
