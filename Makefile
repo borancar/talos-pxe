@@ -5,9 +5,14 @@ TAG ?= $(shell cat VERSION)
 PACKAGE ?= talos-pxe
 TEST_PATTERN ?= "TestLogInfo"
 ROOT_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+THIS_FILE := $(lastword $(MAKEFILE_LIST))
 
 
-.PHONY: unittest-local unittest build-unittest
+.PHONY: unittest-local unittest build-unittest all
+
+all:
+	$(info Currently the make is used only for running tests)
+	@$(MAKE) -f $(THIS_FILE) unittest
 
 build-unittest:
 	$(DOCKER) build -t talos-pxe:unittest-${PACKAGE}-${TAG} --target unittest .
