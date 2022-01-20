@@ -21,11 +21,11 @@ unittest-local:
 	set -o pipefail; go test -cover -v ./... -coverprofile=out/coverage.out 2>&1 | tee out/unittest.out
 	go tool cover -html=out/coverage.out -o out/coverage.html
 unittest: build-unittest
-    # TODO replace this volume mount with copying the coverage files out from container after done as it will not work with some Linux setups
-	$(DOCKER) run -t -v ${ROOT_DIR}:/go/src/github.com/borancar/talos-pxe \
+    # TODO replace this volume mount with copying the coverage files out from container after done
+	$(DOCKER) run -t -v ${ROOT_DIR}:/go/src/github.com/borancar/talos-pxe:Z \
 	--rm  talos-pxe:unittest-${PACKAGE}-${TAG}
 unittest-one: build-unittest
-	$(DOCKER) run -t -v ${ROOT_DIR}:/go/src/github.com/borancar/talos-pxe \
+	$(DOCKER) run -t -v ${ROOT_DIR}:/go/src/github.com/borancar/talos-pxe:Z \
 	--rm --entrypoint bash \
 	talos-pxe:unittest-${PACKAGE}-${TAG} -c "go test -v -run $(TEST_PATTERN)"
 
