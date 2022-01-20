@@ -18,11 +18,11 @@ const (
 	DNSTTL = 60
 )
 
-type ServiceLookupPlugin struct{
-	Next plugin.Handler
-	Fall fall.F
+type ServiceLookupPlugin struct {
+	Next   plugin.Handler
+	Fall   fall.F
 	Server *Server
-	Zones []string
+	Zones  []string
 }
 
 func (s ServiceLookupPlugin) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
@@ -155,20 +155,24 @@ func (s *Server) registerDNSEntry(entry string, ip net.IP) {
 }
 
 func (s *Server) serveDNS(l net.PacketConn) error {
+	return s.serverDNS.ServePacket(l)
+}
+
+func (s *Server) prepConfDNS() []*dnsserver.Config {
 	zone := "talos."
 
 	zoneConfig := &dnsserver.Config{
-		Zone: zone,
-		Transport: "dns",
+		Zone:        zone,
+		Transport:   "dns",
 		ListenHosts: []string{""},
-		Port: fmt.Sprintf("%d", s.DNSPort),
-		Debug: true,
+		Port:        fmt.Sprintf("%d", s.DNSPort),
+		Debug:       true,
 	}
 
 	zoneConfig.AddPlugin(func(next plugin.Handler) plugin.Handler {
 		serviceLookup := ServiceLookupPlugin{
 			Server: s,
-			Zones: []string{zone},
+			Zones:  []string{zone},
 		}
 		serviceLookup.Next = next
 
@@ -176,11 +180,11 @@ func (s *Server) serveDNS(l net.PacketConn) error {
 	})
 
 	proxyConfig := &dnsserver.Config{
-		Zone: ".",
-		Transport: "dns",
+		Zone:        ".",
+		Transport:   "dns",
 		ListenHosts: []string{""},
-		Port: fmt.Sprintf("%d", s.DNSPort),
-		Debug: true,
+		Port:        fmt.Sprintf("%d", s.DNSPort),
+		Debug:       true,
 	}
 
 	proxyConfig.AddPlugin(func(next plugin.Handler) plugin.Handler {
@@ -193,14 +197,5 @@ func (s *Server) serveDNS(l net.PacketConn) error {
 		return forwardProxy
 	})
 
-	dnsServer, err := dnsserver.NewServer(s.IP.String(), []*dnsserver.Config{zoneConfig, proxyConfig})
-	if err != nil {
-		return err
-	}
-	err = dnsServer.ServePacket(l)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return []*dnsserver.Config{zoneConfig, proxyConfig}
 }

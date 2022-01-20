@@ -15,6 +15,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"time"
@@ -25,7 +26,7 @@ import (
 )
 
 func (s *Server) handlerDHCP4() server4.Handler {
-	leaseTime := 5*time.Minute
+	leaseTime := 5 * time.Minute
 
 	return func(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4) {
 		log.Debugf("DHCPv4: got %s", m.Summary())
@@ -81,7 +82,7 @@ func (s *Server) handlerDHCP4() server4.Handler {
 				}
 
 				record = &DHCPRecord{
-					IP: newIp.IP,
+					IP:      newIp.IP,
 					expires: time.Now().Add(leaseTime),
 				}
 				s.DHCPRecords[m.ClientHWAddr.String()] = record
@@ -174,21 +175,22 @@ func (l DHCPLogger) Printf(format string, v ...interface{}) {
 	log.Infof(format, v...)
 }
 
-func (s *Server) startDhcp() error {
-	logger := DHCPLogger{}
+func (s *Server) startDHCP() error {
+	return s.serverDHCP.Serve()
+}
 
-	server, err := server4.NewServer(
-		s.Intf,
-		nil,
-		s.handlerDHCP4(),
-		server4.WithLogger(logger),
-	)
+func getAvailableRange(netIp net.IPNet, netServer net.IP) (net.IP, net.IP) {
+	mask := binary.BigEndian.Uint32(netIp.Mask)
+	start := binary.BigEndian.Uint32(netServer.To4())
 
-	if err != nil {
-		return err
-	}
+	first := start + 1
+	last := ((start & mask) | (mask ^ 0xffffffff)) - 1
 
-	server.Serve()
+	firstIp := make(net.IP, 4)
+	lastIp := make(net.IP, 4)
 
-	return nil
+	binary.BigEndian.PutUint32(firstIp, first)
+	binary.BigEndian.PutUint32(lastIp, last)
+
+	return firstIp, lastIp
 }

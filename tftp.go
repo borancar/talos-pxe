@@ -18,11 +18,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/pin/tftp"
 	"io"
+	"io/ioutil"
 	"net"
+	"path/filepath"
 	"strings"
+)
 
-	tftp "github.com/pin/tftp"
+var (
+	ipxeFileName = "ipxe.efi"
 )
 
 type TFTPHook struct {
@@ -33,32 +38,53 @@ func (h *TFTPHook) OnSuccess(stats tftp.TransferStats) {
 }
 
 func (h *TFTPHook) OnFailure(stats tftp.TransferStats, err error) {
-	log.Errorf("Failure transferring %s to %s: %s", stats.Filename, stats.RemoteAddr, err)
+	log.Errorf("TFTPHook Failure transferring %s to %s: %s", stats.Filename, stats.RemoteAddr, err)
+	if strings.Contains(err.Error(), "use of closed network connection") {
+		//time.Sleep(time.Second)
+	}
 }
 
-// readHandler is called when client starts file download from server
-func (s *Server) readHandler(path string, rf io.ReaderFrom) error {
+// readHandlerTFTP is called when client starts file download from server
+func (s *Server) readHandlerTFTP(path string, rf io.ReaderFrom) error {
 	_, classId, classInfo, err := extractInfo(path)
 	if err != nil {
 		return fmt.Errorf("unknown path %q", path)
 	}
 
-	bs, err := s.Ipxe(classId, classInfo)
+	bs, err := s.prepIpxeContent(classId, classInfo)
 	if err != nil {
 		return err
 	}
 
 	rf.(tftp.OutgoingTransfer).SetSize(int64(len(bs)))
-	rf.ReadFrom(bytes.NewBuffer(bs))
+	_, _ = rf.ReadFrom(bytes.NewBuffer(bs))
 
 	return nil
 }
 
+// prepIpxeContent serves ipxe menu or the ipxe.efi file
+func (s *Server) prepIpxeContent(classId, classInfo string) ([]byte, error) {
+
+	if strings.Contains(classInfo, "iPXE") {
+		var menuBuffer bytes.Buffer
+		_ = ipxeMenuTemplate.Execute(&menuBuffer, s)
+		return menuBuffer.Bytes(), nil
+	}
+
+	if classId == "PXEClient:Arch:00000:UNDI:002001" || classId == "PXEClient:Arch:00007:UNDI:003001" {
+		data, err := ioutil.ReadFile(filepath.Join(s.ServerRoot, ipxeFileName))
+		if err != nil {
+			return nil, err
+		}
+		return data, nil
+	}
+
+	return nil, fmt.Errorf("Unknown class %s:%s", classId, classInfo)
+}
+
 func (s *Server) serveTFTP(l net.PacketConn) error {
-	ts := tftp.NewServer(s.readHandler, nil)
-	ts.SetHook(&TFTPHook{})
-	err := ts.Serve(l)
-	if err != nil {
+	s.tFTPStarted = true
+	if err := s.serverTFTP.Serve(l); err != nil {
 		return fmt.Errorf("TFTP server shut down: %s", err)
 	}
 	return nil
