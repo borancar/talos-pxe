@@ -71,6 +71,7 @@ func main() {
 	ipAddrFlag := flag.String("addr", "192.168.123.1/24", "Cidr to use in case if there is not DHCP server present in the network")
 	gwAddrFlag := flag.String("gw", "", "Override gateway address")
 	dnsAddrFlag := flag.String("dns", "", "Override DNS address")
+	skipIfup := flag.Bool("skip-ifup", false, "Skip provisioning interface (useful for interfaces already provisioned")
 	controlplaneFlag := flag.String("controlplane", defaultControlplane, "Controlplane address")
 	flag.Parse()
 
@@ -84,83 +85,119 @@ func main() {
 		log.Infof(" - %s\n", iface.Name)
 	}
 
-	log.Infof("Select interface %s", *ifNameFlag)
+	var selectedInterface *net.Interface = nil
 
-	eth, err := tenus.NewLinkFrom(*ifNameFlag)
+	for _, iface := range validInterfaces {
+		if iface.Name == *ifNameFlag {
+			selectedInterface = &iface;
+			break;
+		}
+	}
+
+	if selectedInterface == nil {
+		log.Panicf("Could not find interface: %s", *ifNameFlag)
+	}
+
+	log.Infof("Select interface %s", selectedInterface.Name)
+
+	eth, err := tenus.NewLinkFrom(selectedInterface.Name)
 	if err != nil {
 		log.Panic(err)
 	}
 
-	if err := eth.SetLinkUp(); err != nil {
-		log.Panic(err)
-	}
-
-	log.Infof("Brought %s up\n", eth.NetInterface().Name)
-
 	var server *Server
 
-	lease, _ := getDHCPlease(eth.NetInterface(), time.Second*10)
-	if lease != nil {
-		log.Infof("Obtained address %s\n", lease.FixedAddress)
+	if *skipIfup {
+		addrs, err := selectedInterface.Addrs()
 
-		ipNet := &net.IPNet{
-			IP:   lease.FixedAddress,
-			Mask: lease.Netmask,
+		if len(addrs) == 0 {
+			log.Panicf("Interface %s has no addresses", &selectedInterface.Name)
 		}
 
-		if err := eth.SetLinkIp(ipNet.IP, ipNet); err != nil && err != syscall.EEXIST {
-			log.Panic(err)
+		ipNet, ok := addrs[0].(*net.IPNet)
+		if !ok {
+			log.Panic("Could not extract ipnet from interface")
 		}
 
-		for _, routerIp := range lease.Router {
-			log.Infof("Adding default GW %s\n", routerIp)
-			if err := eth.SetLinkDefaultGw(&routerIp); err != nil && err != syscall.EEXIST {
-				log.Panic(err)
-			}
-		}
+		log.Infof("Using address %s\n", ipNet.String())
 
-		server, err = NewServer(lease.FixedAddress, *serverRootFlag, eth.NetInterface().Name, *controlplaneFlag)
+		server, err = NewServer(ipNet.IP, *serverRootFlag, eth.NetInterface().Name, *controlplaneFlag)
 		if err != nil {
 			log.Panic(err)
-		}
-
-		if len(lease.DNS) > 0 {
-			var dnsForwards = make([]string, len(lease.DNS))
-			for i, oneDnsServer := range lease.DNS {
-				log.Infof("Adding DNS %s\n", oneDnsServer)
-				dnsForwards[i] = fmt.Sprintf("%s:53", oneDnsServer)
-			}
-			if err := server.ConfigureDnsServer(dnsForwards, portDNS); err != nil {
-				log.Panicf("Error configuring DNS: %v", err)
-			}
 		}
 
 		server.Net = ipNet
 		server.ProxyDHCP = true
 	} else {
-		// If lese is nil we assume that there is no DHCP server present in the network, so we are going to server it
-		netIp, ipNet, err := net.ParseCIDR(*ipAddrFlag)
-		if err != nil {
-			log.Panicf("Error parsing cidr %s, %v", *ipAddrFlag, err)
-		}
-		firstIp, lastIp := getAvailableRange(*ipNet, netIp)
-		log.Infof("Setting manual address %s, leasing out subnet %s (available range %s - %s)\n", netIp, ipNet, firstIp, lastIp)
-
-		server, err = NewServer(netIp, *serverRootFlag, eth.NetInterface().Name, *controlplaneFlag)
-		if err != nil {
-			log.Panicf("Error creating server: %v", err)
-		}
-
-		server.Net = ipNet
-		server.ProxyDHCP = false
-
-		server.DHCPAllocator, err = bitmap.NewIPv4Allocator(firstIp, lastIp)
-		if err != nil {
+		if err := eth.SetLinkUp(); err != nil {
 			log.Panic(err)
 		}
 
-		if err := eth.SetLinkIp(netIp, ipNet); err != nil && err != syscall.EEXIST {
-			log.Panic(err)
+		log.Infof("Brought %s up\n", eth.NetInterface().Name)
+
+		lease, _ := getDHCPlease(eth.NetInterface(), time.Second*10)
+		if lease != nil {
+			log.Infof("Obtained address %s\n", lease.FixedAddress)
+
+			ipNet := &net.IPNet{
+				IP:   lease.FixedAddress,
+				Mask: lease.Netmask,
+			}
+
+			if err := eth.SetLinkIp(ipNet.IP, ipNet); err != nil && err != syscall.EEXIST {
+				log.Panic(err)
+			}
+
+			for _, routerIp := range lease.Router {
+				log.Infof("Adding default GW %s\n", routerIp)
+				if err := eth.SetLinkDefaultGw(&routerIp); err != nil && err != syscall.EEXIST {
+					log.Panic(err)
+				}
+			}
+
+			server, err = NewServer(lease.FixedAddress, *serverRootFlag, eth.NetInterface().Name, *controlplaneFlag)
+			if err != nil {
+				log.Panic(err)
+			}
+
+			if len(lease.DNS) > 0 {
+				var dnsForwards = make([]string, len(lease.DNS))
+				for i, oneDnsServer := range lease.DNS {
+					log.Infof("Adding DNS %s\n", oneDnsServer)
+					dnsForwards[i] = fmt.Sprintf("%s:53", oneDnsServer)
+				}
+				if err := server.ConfigureDnsServer(dnsForwards, portDNS); err != nil {
+					log.Panicf("Error configuring DNS: %v", err)
+				}
+			}
+
+			server.Net = ipNet
+			server.ProxyDHCP = true
+		} else {
+			// If lease is nil we assume that there is no DHCP server present in the network, so we are going to serve it
+			netIp, ipNet, err := net.ParseCIDR(*ipAddrFlag)
+			if err != nil {
+				log.Panicf("Error parsing cidr %s, %v", *ipAddrFlag, err)
+			}
+			firstIp, lastIp := getAvailableRange(*ipNet, netIp)
+			log.Infof("Setting manual address %s, leasing out subnet %s (available range %s - %s)\n", netIp, ipNet, firstIp, lastIp)
+
+			server, err = NewServer(netIp, *serverRootFlag, eth.NetInterface().Name, *controlplaneFlag)
+			if err != nil {
+				log.Panicf("Error creating server: %v", err)
+			}
+
+			server.Net = ipNet
+			server.ProxyDHCP = false
+
+			server.DHCPAllocator, err = bitmap.NewIPv4Allocator(firstIp, lastIp)
+			if err != nil {
+				log.Panic(err)
+			}
+
+			if err := eth.SetLinkIp(netIp, ipNet); err != nil && err != syscall.EEXIST {
+				log.Panic(err)
+			}
 		}
 	}
 
