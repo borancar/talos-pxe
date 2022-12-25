@@ -27,7 +27,8 @@ import (
 )
 
 var (
-	ipxeFileName = "ipxe.efi"
+	ipxeFileName     = "ipxe.efi"
+	undionlyFileName = "undionly.kpxe"
 )
 
 type TFTPHook struct {
@@ -71,7 +72,13 @@ func (s *Server) prepIpxeContent(classId, classInfo string) ([]byte, error) {
 		return menuBuffer.Bytes(), nil
 	}
 
-	if classId == "PXEClient:Arch:00000:UNDI:002001" || classId == "PXEClient:Arch:00007:UNDI:003001" {
+	if classId == "PXEClient:Arch:00000:UNDI:002001" {
+		data, err := ioutil.ReadFile(filepath.Join(s.ServerRoot, undionlyFileName))
+		if err != nil {
+			return nil, err
+		}
+		return data, nil
+	} else if classId == "PXEClient:Arch:00007:UNDI:003001" {
 		data, err := ioutil.ReadFile(filepath.Join(s.ServerRoot, ipxeFileName))
 		if err != nil {
 			return nil, err
