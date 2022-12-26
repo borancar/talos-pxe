@@ -67,9 +67,9 @@ func (s *Server) readHandlerTFTP(path string, rf io.ReaderFrom) error {
 func (s *Server) prepIpxeContent(classId, classInfo string) ([]byte, error) {
 
 	if strings.Contains(classInfo, "iPXE") {
-		var menuBuffer bytes.Buffer
-		_ = ipxeMenuTemplate.Execute(&menuBuffer, s)
-		return menuBuffer.Bytes(), nil
+		var chainBuffer bytes.Buffer
+		_ = chainLoadTemplate.Execute(&chainBuffer, s)
+		return chainBuffer.Bytes(), nil
 	}
 
 	if classId == "PXEClient:Arch:00000:UNDI:002001" {

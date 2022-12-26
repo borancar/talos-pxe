@@ -27,6 +27,15 @@ const (
 	defaultControlplane = "controlplane.talos."
 )
 
+var chainLoadTemplate = template.Must(template.New("iPXE Auto").Parse(`#!ipxe
+isset ${proxydhcp/next-server} || goto start
+set next-server ${proxydhcp/next-server}
+set filename ${proxydhcp/filename}
+
+:start
+chain http://{{ .IP }}:8080/ipxe?uuid=${uuid}&ip=${ip}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=auto
+`))
+
 var ipxeMenuTemplate = template.Must(template.New("iPXE Menu").Parse(`#!ipxe
 isset ${proxydhcp/next-server} || goto start
 set next-server ${proxydhcp/next-server}
