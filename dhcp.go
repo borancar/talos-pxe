@@ -141,6 +141,9 @@ func (s *Server) handlerDHCP4() server4.Handler {
 				// other clients don't understand tftp://, but they will accept TFTPServerName, even in proxyDHCP
 				resp.UpdateOption(dhcpv4.OptBootFileName(fmt.Sprintf("%s/%s/%s", m.ClientHWAddr, m.ClassIdentifier(), m.UserClass())))
 			}
+		} else if s.ProxyDHCP {
+			log.Infof("Proxy mode and not a PXE boot request from %s, so ignoring", m.ClientHWAddr)
+			return
 		}
 
 		//resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionInterfaceMTU, dhcpv4.Uint16(match.MTU).ToBytes()))
