@@ -13,6 +13,7 @@
       "console=ttyS0",
       "printk.devkmsg=on",
       "talos.platform=metal",
+      "ip=:::::::${next-server}::",
       "talos.config=http://${next-server}:8080/assets/controlplane.yaml"
     ]
   }
