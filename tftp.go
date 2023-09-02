@@ -18,12 +18,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/pin/tftp"
 	"io"
 	"io/ioutil"
 	"net"
 	"path/filepath"
 	"strings"
+
+	"github.com/pin/tftp"
 )
 
 var (
@@ -79,6 +80,12 @@ func (s *Server) prepIpxeContent(classId, classInfo string) ([]byte, error) {
 		}
 		return data, nil
 	} else if classId == "PXEClient:Arch:00007:UNDI:003001" {
+		data, err := ioutil.ReadFile(filepath.Join(s.ServerRoot, ipxeFileName))
+		if err != nil {
+			return nil, err
+		}
+		return data, nil
+	} else if classId == "PXEClient:Arch:00007:UNDI:003016" {
 		data, err := ioutil.ReadFile(filepath.Join(s.ServerRoot, ipxeFileName))
 		if err != nil {
 			return nil, err
