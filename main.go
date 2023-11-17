@@ -48,11 +48,12 @@ item --key i init               Bootstrap Node
 item --key c controlplane       Master Node
 item --key w worker             Worker Node
 item --gap                      Other
+item --key f refresh            Refresh
 item --key s shell              iPXE Shell
 item --key r reboot             Reboot
 item --key e exit               Exit
-choose --timeout 0 --default worker selected || goto cancel
-set menu-timeout 0
+choose --timeout 5000 --default refresh selected || goto cancel
+set menu-timeout 5000
 goto ${selected}
 
 :init
@@ -63,6 +64,9 @@ chain http://{{ .IP }}:8080/ipxe?uuid=${uuid}&ip=${ip}&mac=${mac:hexhyp}&domain=
 
 :worker
 chain http://{{ .IP }}:8080/ipxe?uuid=${uuid}&ip=${ip}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}&type=worker
+
+:refresh
+chain --replace http://{{ .IP }}:8080/ipxe?uuid=${uuid}&ip=${ip}&mac=${mac:hexhyp}&domain=${domain}&hostname=${hostname}&serial=${serial}
 
 :reboot
 reboot
@@ -98,8 +102,8 @@ func main() {
 
 	for _, iface := range validInterfaces {
 		if iface.Name == *ifNameFlag {
-			selectedInterface = &iface;
-			break;
+			selectedInterface = &iface
+			break
 		}
 	}
 
