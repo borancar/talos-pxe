@@ -81,7 +81,7 @@ exit
 func main() {
 	serverRootFlag := flag.String("root", ".", "Server root, where to serve the files from")
 	ifNameFlag := flag.String("if", "eth0", "Interface to use")
-	ipAddrFlag := flag.String("addr", "192.168.123.1/24", "Cidr to use in case if there is not DHCP server present in the network")
+	ipAddrFlag := flag.String("addr", "", "IP CIDR to use when no DHCP (default 192.168.123.1/24), can be used to override DHCP provided value")
 	gwAddrFlag := flag.String("gw", "", "Override gateway address")
 	dnsAddrFlag := flag.String("dns", "", "Override DNS address")
 	skipIfup := flag.Bool("skip-ifup", false, "Skip provisioning interface (useful for interfaces already provisioned")
@@ -152,12 +152,21 @@ func main() {
 		if lease != nil {
 			log.Infof("Obtained address %s\n", lease.FixedAddress)
 
+			ip := lease.FixedAddress
 			ipNet := &net.IPNet{
 				IP:   lease.FixedAddress,
 				Mask: lease.Netmask,
 			}
 
-			if err := eth.SetLinkIp(ipNet.IP, ipNet); err != nil && err != syscall.EEXIST {
+			if *ipAddrFlag != "" {
+				ip, ipNet, err = net.ParseCIDR(*ipAddrFlag)
+				if err != nil {
+					log.Panicf("Error parsing cidr %s, %v", *ipAddrFlag, err)
+				}
+				log.Infof("Overriding DHCP with manual address %s", ip)
+			}
+
+			if err := eth.SetLinkIp(ip, ipNet); err != nil && err != syscall.EEXIST {
 				log.Panic(err)
 			}
 
@@ -168,7 +177,7 @@ func main() {
 				}
 			}
 
-			server, err = NewServer(lease.FixedAddress, *serverRootFlag, eth.NetInterface().Name, *controlplaneFlag)
+			server, err = NewServer(ip, *serverRootFlag, eth.NetInterface().Name, *controlplaneFlag)
 			if err != nil {
 				log.Panic(err)
 			}
@@ -188,14 +197,20 @@ func main() {
 			server.ProxyDHCP = true
 		} else {
 			// If lease is nil we assume that there is no DHCP server present in the network, so we are going to serve it
-			netIp, ipNet, err := net.ParseCIDR(*ipAddrFlag)
+			ipAddr := *ipAddrFlag
+
+			if ipAddr == "" {
+				ipAddr = "192.168.123.1/24"
+			}
+
+			ip, ipNet, err := net.ParseCIDR(*ipAddrFlag)
 			if err != nil {
 				log.Panicf("Error parsing cidr %s, %v", *ipAddrFlag, err)
 			}
-			firstIp, lastIp := getAvailableRange(*ipNet, netIp)
-			log.Infof("Setting manual address %s, leasing out subnet %s (available range %s - %s)\n", netIp, ipNet, firstIp, lastIp)
+			firstIp, lastIp := getAvailableRange(*ipNet, ip)
+			log.Infof("Setting manual address %s, leasing out subnet %s (available range %s - %s)\n", ip, ipNet, firstIp, lastIp)
 
-			server, err = NewServer(netIp, *serverRootFlag, eth.NetInterface().Name, *controlplaneFlag)
+			server, err = NewServer(ip, *serverRootFlag, eth.NetInterface().Name, *controlplaneFlag)
 			if err != nil {
 				log.Panicf("Error creating server: %v", err)
 			}
@@ -208,7 +223,7 @@ func main() {
 				log.Panic(err)
 			}
 
-			if err := eth.SetLinkIp(netIp, ipNet); err != nil && err != syscall.EEXIST {
+			if err := eth.SetLinkIp(ip, ipNet); err != nil && err != syscall.EEXIST {
 				log.Panic(err)
 			}
 		}
