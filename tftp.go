@@ -19,8 +19,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -74,19 +74,19 @@ func (s *Server) prepIpxeContent(classId, classInfo string) ([]byte, error) {
 	}
 
 	if classId == "PXEClient:Arch:00000:UNDI:002001" {
-		data, err := ioutil.ReadFile(filepath.Join(s.ServerRoot, undionlyFileName))
+		data, err := os.ReadFile(filepath.Join(s.ServerRoot, undionlyFileName))
 		if err != nil {
 			return nil, err
 		}
 		return data, nil
 	} else if classId == "PXEClient:Arch:00007:UNDI:003001" {
-		data, err := ioutil.ReadFile(filepath.Join(s.ServerRoot, ipxeFileName))
+		data, err := os.ReadFile(filepath.Join(s.ServerRoot, ipxeFileName))
 		if err != nil {
 			return nil, err
 		}
 		return data, nil
 	} else if classId == "PXEClient:Arch:00007:UNDI:003016" {
-		data, err := ioutil.ReadFile(filepath.Join(s.ServerRoot, ipxeFileName))
+		data, err := os.ReadFile(filepath.Join(s.ServerRoot, ipxeFileName))
 		if err != nil {
 			return nil, err
 		}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -38,7 +37,7 @@ type TempDir struct {
 }
 
 func NewTempDir(t *testing.T, prefix string) *TempDir {
-	tmpDir, err := ioutil.TempDir("", prefix)
+	tmpDir, err := os.MkdirTemp("", prefix)
 	if err != nil {
 		t.Fatalf("Error creating tmp dir %v", err)
 	}
@@ -62,7 +61,7 @@ func (td *TempDir) Cleanup() {
 
 func (td *TempDir) Write(fname, content string) string {
 	filePath := path.Join(td.path, fname)
-	err := ioutil.WriteFile(filePath, bytes.NewBufferString(content).Bytes(), 0755)
+	err := os.WriteFile(filePath, bytes.NewBufferString(content).Bytes(), 0755)
 	if err != nil {
 		td.Fatalf("Error creating done file %v", err)
 	}
