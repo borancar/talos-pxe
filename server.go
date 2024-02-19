@@ -85,7 +85,7 @@ func (s *Server) Serve() error {
 		return err
 	}
 	defer cPxe.Close()
-	cHttp, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.IP, s.HTTPPort))
+	cHttp, err := net.Listen("tcp", fmt.Sprintf(":%d", s.HTTPPort))
 	if err != nil {
 		return err
 	}
