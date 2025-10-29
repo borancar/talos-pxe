@@ -63,8 +63,8 @@ func (s *Server) handlerDHCP4() server4.Handler {
 		}
 
 		for _, u := range m.UserClass() {
-			switch {
-			case u == "iPXE":
+			switch u {
+			case "iPXE":
 				ipxe = true
 			}
 		}
@@ -128,7 +128,7 @@ func (s *Server) handlerDHCP4() server4.Handler {
 		resp.ServerIPAddr = s.IP
 
 		if m.IsOptionRequested(dhcpv4.OptionBootfileName) {
-			log.Infof("received PXE boot request from %s", m.ClientHWAddr)
+			log.Infof("received PXE boot request from %s, arch %+v, class %+v, efi: %v, ipxe: %v", m.ClientHWAddr, m.ClientArch(), m.UserClass(), efi, ipxe)
 
 			log.Infof("sending PXE response to %s", m.ClientHWAddr)
 
@@ -146,7 +146,7 @@ func (s *Server) handlerDHCP4() server4.Handler {
 			return
 		}
 
-		//resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionInterfaceMTU, dhcpv4.Uint16(match.MTU).ToBytes()))
+		// resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionInterfaceMTU, dhcpv4.Uint16(match.MTU).ToBytes()))
 
 		switch mt := m.MessageType(); mt { //nolint:exhaustive
 		case dhcpv4.MessageTypeDiscover:
@@ -167,8 +167,7 @@ func (s *Server) handlerDHCP4() server4.Handler {
 	}
 }
 
-type DHCPLogger struct {
-}
+type DHCPLogger struct{}
 
 func (l DHCPLogger) PrintMessage(prefix string, message *dhcpv4.DHCPv4) {
 	log.Infof("%s: %v", prefix, message)

@@ -32,8 +32,7 @@ var (
 	undionlyFileName = "undionly.kpxe"
 )
 
-type TFTPHook struct {
-}
+type TFTPHook struct{}
 
 func (h *TFTPHook) OnSuccess(stats tftp.TransferStats) {
 	log.Infof("Transferred %s to %s", stats.Filename, stats.RemoteAddr)
@@ -42,7 +41,7 @@ func (h *TFTPHook) OnSuccess(stats tftp.TransferStats) {
 func (h *TFTPHook) OnFailure(stats tftp.TransferStats, err error) {
 	log.Errorf("TFTPHook Failure transferring %s to %s: %s", stats.Filename, stats.RemoteAddr, err)
 	if strings.Contains(err.Error(), "use of closed network connection") {
-		//time.Sleep(time.Second)
+		// time.Sleep(time.Second)
 	}
 }
 
@@ -66,34 +65,34 @@ func (s *Server) readHandlerTFTP(path string, rf io.ReaderFrom) error {
 
 // prepIpxeContent serves ipxe menu or the ipxe.efi file
 func (s *Server) prepIpxeContent(classId, classInfo string) ([]byte, error) {
-
 	if strings.Contains(classInfo, "iPXE") {
 		var chainBuffer bytes.Buffer
 		_ = chainLoadTemplate.Execute(&chainBuffer, s)
 		return chainBuffer.Bytes(), nil
 	}
 
-	if classId == "PXEClient:Arch:00000:UNDI:002001" {
+	switch classId {
+	case "PXEClient:Arch:00000:UNDI:002001":
 		data, err := os.ReadFile(filepath.Join(s.ServerRoot, undionlyFileName))
 		if err != nil {
 			return nil, err
 		}
 		return data, nil
-	} else if classId == "PXEClient:Arch:00007:UNDI:003001" {
+	case "PXEClient:Arch:00007:UNDI:003001":
 		data, err := os.ReadFile(filepath.Join(s.ServerRoot, ipxeFileName))
 		if err != nil {
 			return nil, err
 		}
 		return data, nil
-	} else if classId == "PXEClient:Arch:00007:UNDI:003016" {
+	case "PXEClient:Arch:00007:UNDI:003016":
 		data, err := os.ReadFile(filepath.Join(s.ServerRoot, ipxeFileName))
 		if err != nil {
 			return nil, err
 		}
 		return data, nil
+	default:
+		return nil, fmt.Errorf("Unknown class %s:%s", classId, classInfo)
 	}
-
-	return nil, fmt.Errorf("Unknown class %s:%s", classId, classInfo)
 }
 
 func (s *Server) serveTFTP(l net.PacketConn) error {
